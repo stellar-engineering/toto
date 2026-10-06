@@ -1,8 +1,8 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClientMessage, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
 
-export type { Agent, AgentEvent, ClientMessage, Mode, Project } from '../../protocol';
+export type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project } from '../../protocol';
 
 type Connection = {
   status: 'idle' | 'connecting' | 'open';
@@ -15,6 +15,8 @@ type Connection = {
   busy: boolean;
   projects: Project[];
   agents: Agent[];
+  /** Who agents' commits are attributed to. */
+  identity?: Identity;
   /** The device's public SSH key, when it has one. */
   sshKey?: string;
   /** Each agent's history, by agent id. */
@@ -36,6 +38,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sshKey, setSshKey] = useState<string>();
+  const [identity, setIdentity] = useState<Identity>();
   const [events, setEvents] = useState<Connection['events']>({});
   const socket = useRef<WebSocket | null>(null);
 
@@ -53,6 +56,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           setProjects(msg.projects);
           setAgents(msg.agents);
           setSshKey(msg.sshKey);
+          setIdentity(msg.identity);
           setBusy(false);
           break;
         case 'event':
@@ -82,7 +86,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Context.Provider value={{ status, notice, connect, post, request, busy, projects, agents, sshKey, events }}>
+    <Context.Provider value={{ status, notice, connect, post, request, busy, projects, agents, identity, sshKey, events }}>
       {children}
     </Context.Provider>
   );

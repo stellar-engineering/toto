@@ -1,11 +1,27 @@
 import { Link, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Button, FlatList, Pressable, Share, Text, TextInput, View } from 'react-native';
-import { useConnection } from '../connection';
+import { useConnection, type Identity } from '../connection';
 import { styles } from '../styles';
 
+function AuthorForm({ identity }: { identity: Identity }) {
+  const { request, busy } = useConnection();
+  const [name, setName] = useState(identity.name);
+  const [email, setEmail] = useState(identity.email);
+  const changed = name.trim() !== identity.name || email.trim() !== identity.email;
+  return (
+    <View style={styles.form}>
+      <Text style={styles.rowTitle}>Commit author</Text>
+      <Text style={styles.muted}>Agents make their git commits under this name and email.</Text>
+      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" accessibilityLabel="Commit author name" />
+      <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="you@example.com" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" accessibilityLabel="Commit author email" />
+      <Button title="Save author" onPress={() => request({ type: 'set_identity', name, email })} disabled={busy || !changed || !name.trim() || !email.trim()} />
+    </View>
+  );
+}
+
 export default function Projects() {
-  const { projects, agents, sshKey, request, busy } = useConnection();
+  const { projects, agents, identity, sshKey, request, busy } = useConnection();
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('');
 
@@ -37,6 +53,8 @@ export default function Projects() {
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Project name" accessibilityLabel="Project name" />
             <TextInput style={styles.input} value={repo} onChangeText={setRepo} placeholder="git@github.com:owner/repo.git" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Repository address" />
             <Button title={busy ? 'Cloning…' : 'Add project'} onPress={add} disabled={busy || !name.trim() || !repo.trim()} />
+            {/* Keyed on the saved value so the fields follow it, including when another device changes it. */}
+            {identity && <AuthorForm key={`${identity.name}\n${identity.email}`} identity={identity} />}
             {!!sshKey && (
               <View style={styles.form}>
                 <Text style={styles.rowTitle}>SSH key for this Toto</Text>

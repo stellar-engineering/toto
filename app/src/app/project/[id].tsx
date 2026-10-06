@@ -1,12 +1,13 @@
-import { Link, Stack, useLocalSearchParams } from 'expo-router';
+import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Button, FlatList, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Button, FlatList, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useConnection } from '../../connection';
 import { styles } from '../../styles';
 
 export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, agents, request, busy } = useConnection();
+  const { projects, agents, post, request, busy } = useConnection();
+  const router = useRouter();
   const project = projects.find((p) => p.id === id);
   const [name, setName] = useState('');
   const [worktree, setWorktree] = useState(true);
@@ -17,6 +18,18 @@ export default function ProjectScreen() {
     setName('');
   };
 
+  const confirmDelete = (title: string, message: string, onDelete: () => void) =>
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]);
+
+  const deleteProject = () =>
+    confirmDelete(`Delete ${project?.name ?? 'this project'}?`, 'This removes its files from your Toto, along with every agent in it and any work they have not pushed.', () => {
+      post({ type: 'delete_project', projectId: id });
+      router.back();
+    });
+
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: project?.name ?? 'Project' }} />
@@ -25,14 +38,30 @@ export default function ProjectScreen() {
         keyExtractor={(a) => a.id}
         ListEmptyComponent={<Text style={[styles.muted, styles.row]}>No agents yet. Start one below.</Text>}
         renderItem={({ item }) => (
-          <Link href={{ pathname: '/agent/[id]', params: { id: item.id } }} asChild>
-            <Pressable style={styles.row} accessibilityRole="button">
-              <Text style={styles.rowTitle}>{item.name}</Text>
-              <Text style={styles.muted}>
-                {item.worktree ? 'Own branch' : 'Main checkout'} · {item.mode === 'auto' ? 'Full auto' : 'Asks first'}
-              </Text>
-            </Pressable>
-          </Link>
+          <View style={[styles.row, styles.option]}>
+            <Link href={{ pathname: '/agent/[id]', params: { id: item.id } }} asChild>
+              <Pressable style={{ flex: 1 }} accessibilityRole="button">
+                <Text style={styles.rowTitle}>{item.name}</Text>
+                <Text style={styles.muted}>
+                  {item.worktree ? 'Own branch' : 'Main checkout'} · {item.mode === 'auto' ? 'Full auto' : 'Asks first'}
+                </Text>
+              </Pressable>
+            </Link>
+            <Button
+              title="Delete"
+              color="#b00020"
+              accessibilityLabel={`Delete agent ${item.name}`}
+              onPress={() =>
+                confirmDelete(
+                  `Delete ${item.name}?`,
+                  item.worktree
+                    ? 'This stops the agent and removes its conversation and any work it has not committed. Its branch is kept.'
+                    : 'This stops the agent and removes its conversation. Files in the main checkout are left as they are.',
+                  () => post({ type: 'delete_agent', agentId: item.id }),
+                )
+              }
+            />
+          </View>
         )}
         ListFooterComponent={
           <View style={styles.form}>
@@ -46,6 +75,8 @@ export default function ProjectScreen() {
               <Switch value={auto} onValueChange={setAuto} accessibilityLabel="Full auto" />
             </View>
             <Button title={busy ? 'Starting…' : 'Start agent'} onPress={start} disabled={busy || !name.trim()} />
+            <View style={{ height: 24 }} />
+            <Button title="Delete project" color="#b00020" onPress={deleteProject} />
           </View>
         }
       />

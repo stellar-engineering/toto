@@ -1,11 +1,21 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { Agent, AgentEvent, ClientMessage, Mode, Project, ServerMessage } from '../../protocol.ts';
+import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { startClaude } from './claude.ts';
-import { addWorktree, createProject, dataDir, deviceKey, openApprovals } from './projects.ts';
+import {
+  addWorktree,
+  applyIdentity,
+  createProject,
+  dataDir,
+  deviceKey,
+  openApprovals,
+  removeProject,
+  removeWorktree,
+} from './projects.ts';
 
 const port = Number(process.env.TOTO_PORT ?? 7860);
 // ponytail: one shared token stands in for auth until M2 pairing exchanges real keys.
@@ -18,9 +28,13 @@ type AgentRecord = Agent & { cwd: string; sessionId?: string };
 const logDir = join(dataDir, 'logs');
 mkdirSync(logDir, { recursive: true });
 const stateFile = join(dataDir, 'state.json');
-const state: { projects: ProjectRecord[]; agents: AgentRecord[] } = existsSync(stateFile)
-  ? JSON.parse(readFileSync(stateFile, 'utf8'))
-  : { projects: [], agents: [] };
+const state: { projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity } = {
+  projects: [],
+  agents: [],
+  // A placeholder so commits never fail for want of an author; the app asks for the real one.
+  identity: { name: 'Toto', email: `toto@${hostname()}` },
+  ...(existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {}),
+};
 const logFile = (agentId: string) => join(logDir, `${agentId}.jsonl`);
 // ponytail: every log is held in memory and replayed whole on connect. Page it when logs get long.
 const logs = new Map<string, AgentEvent[]>(
@@ -37,6 +51,8 @@ const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
+// One line, and not something git could take for an option.
+const isGitValue = (s: unknown): s is string => typeof s === 'string' && /^[^-\s][^\n\r]{0,99}$/.test(s);
 const newId = () => randomBytes(4).toString('hex');
 
 const sha = (s: string) => createHash('sha256').update(s).digest();
@@ -58,6 +74,7 @@ const commit = () => {
 };
 
 const emit = (agent: AgentRecord, event: AgentEvent) => {
+  if (!logs.has(agent.id)) return; // deleted while its process was still winding down
   logs.get(agent.id)!.push(event);
   appendFileSync(logFile(agent.id), JSON.stringify(event) + '\n');
   broadcast({ type: 'event', agentId: agent.id, event });
@@ -79,12 +96,19 @@ const start = (agent: AgentRecord) => {
     onEvent: (e) => emit(agent, e),
     onSession: (id) => {
       agent.sessionId = id;
-      commit();
+      if (logs.has(agent.id)) commit();
     },
     onExit: () => running.delete(agent.id),
   });
   running.set(agent.id, proc);
   return proc;
+};
+
+/** Stops an agent and forgets it. The caller removes it from `state.agents`. */
+const forget = (agent: AgentRecord) => {
+  running.get(agent.id)?.stop();
+  logs.delete(agent.id);
+  rmSync(logFile(agent.id), { force: true });
 };
 
 async function handle(msg: ClientMessage) {
@@ -93,9 +117,36 @@ async function handle(msg: ClientMessage) {
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();
-      const { user, dir } = await createProject(id, msg.repo.trim());
+      const { user, dir } = await createProject(id, msg.repo.trim(), state.identity);
       state.projects.push({ id, name: msg.name.trim(), repo: msg.repo.trim(), user, dir });
       return commit();
+    }
+    case 'set_identity': {
+      if (!isGitValue(msg.name) || !isGitValue(msg.email) || !msg.email.includes('@'))
+        throw new Error('Enter a name and an email address.');
+      state.identity = { name: msg.name.trim(), email: msg.email.trim() };
+      commit();
+      for (const project of state.projects) await applyIdentity(project, state.identity);
+      return;
+    }
+    case 'delete_project': {
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      if (!project) return;
+      // Out of state first, so nothing new can start in it while its files go.
+      state.agents.filter((a) => a.projectId === project.id).forEach(forget);
+      state.agents = state.agents.filter((a) => a.projectId !== project.id);
+      state.projects = state.projects.filter((p) => p !== project);
+      commit();
+      return removeProject(project.id, project.user);
+    }
+    case 'delete_agent': {
+      if (!agent) return;
+      forget(agent);
+      state.agents = state.agents.filter((a) => a !== agent);
+      commit();
+      const project = state.projects.find((p) => p.id === agent.projectId);
+      if (agent.worktree && project) await removeWorktree(project, agent.cwd);
+      return;
     }
     case 'create_agent': {
       const project = state.projects.find((p) => p.id === msg.projectId);

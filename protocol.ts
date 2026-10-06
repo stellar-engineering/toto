@@ -22,19 +22,27 @@ export type Project = { id: string; name: string; repo: string };
 /** `worktree` agents work on their own branch and checkout; the rest share the project's main checkout. */
 export type Agent = { id: string; projectId: string; name: string; mode: Mode; worktree: boolean };
 
+/** Who agents' git commits are attributed to. */
+export type Identity = { name: string; email: string };
+
 /** Server -> client. */
 export type ServerMessage =
   // The full picture, sent on connect and again whenever it changes.
   // `sshKey` is the device's public key, for the user to add to their git host.
-  | { type: 'state'; projects: Project[]; agents: Agent[]; sshKey?: string }
+  | { type: 'state'; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
   // A request from this client could not be carried out.
   | { type: 'failed'; message: string };
 
 /** Client -> server. */
 export type ClientMessage =
+  | { type: 'set_identity'; name: string; email: string }
   | { type: 'create_project'; name: string; repo: string }
+  // Removes the project's files and every agent in it.
+  | { type: 'delete_project'; projectId: string }
   | { type: 'create_agent'; projectId: string; name: string; mode: Mode; worktree: boolean }
+  // Stops the agent and removes its history and, if it has one, its worktree. Its branch is kept.
+  | { type: 'delete_agent'; agentId: string }
   | { type: 'prompt'; agentId: string; text: string }
   | { type: 'approve'; agentId: string; id: string; allow: boolean }
   | { type: 'set_mode'; agentId: string; mode: Mode };

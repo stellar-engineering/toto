@@ -88,13 +88,14 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
   });
 
   let exited = false;
+  let stopping = false;
   const exit = (message?: string) => {
     if (exited) return;
     exited = true;
     for (const id of [...pending.keys()]) settle(id, false);
     // It died without resuming, so stop asking for that conversation or every restart fails the same way.
-    if (sessionId && !session) onSession(undefined);
-    if (message) onEvent({ type: 'error', message });
+    if (sessionId && !session && !stopping) onSession(undefined);
+    if (message && !stopping) onEvent({ type: 'error', message });
     onExit();
   };
   child.on('error', (err) => exit(`could not start claude: ${err.message}`));
@@ -103,8 +104,13 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
 
   return {
     send: (text: string) => write({ type: 'user', message: { role: 'user', content: text } }),
-    // Closing stdin rather than signalling: under sudo the child is not ours to signal.
-    stop: () => child.stdin.end(),
+    // Interrupts any turn in flight and closes stdin, which makes claude exit. Under sudo the
+    // child is not ours to signal.
+    stop: () => {
+      stopping = true;
+      write({ type: 'control_request', request_id: 'stop', request: { subtype: 'interrupt' } });
+      child.stdin.end();
+    },
     /** Answers an open approval. Ignores ids that are unknown or already answered. */
     resolve: (id: string, allow: boolean) => {
       const p = pending.get(id);
