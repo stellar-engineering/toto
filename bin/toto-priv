@@ -1,9 +1,36 @@
 #!/bin/bash
-# The only thing toto-server may run as root: create or delete a project's Linux user.
+# The only things toto-server may run as root: create or delete a project's Linux user, and say
+# whether that user may reach the local network.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
 
 [[ "${2:-}" =~ ^toto-p-[a-f0-9]{8}$ ]] || { echo "toto-priv: bad user name" >&2; exit 2; }
+
+# Toto's firewall is one table of its own. It only ever judges traffic from users in its
+# `restricted` set, and never touches any other table on the machine.
+#
+# A restricted user reaches the internet, DNS and its own loopback, and nothing on private or
+# local-only address ranges: the router, other devices, containers, this machine's LAN address.
+# ponytail: services listening on this machine's 127.0.0.1 stay reachable; separating those
+# needs a network namespace per project.
+firewall() {
+  # Re-run on every call: it is idempotent, keeps the set's members, and replaces the rules in
+  # one transaction, so a newer version of this script upgrades them in place.
+  nft -f - <<'RULES'
+add table inet toto
+add set inet toto restricted { typeof meta skuid; }
+add chain inet toto output { type filter hook output priority filter; policy accept; }
+flush chain inet toto output
+add rule inet toto output meta skuid != @restricted accept
+add rule inet toto output ip daddr 127.0.0.0/8 accept
+add rule inet toto output ip6 daddr ::1 accept
+add rule inet toto output meta l4proto { tcp, udp } th dport 53 accept
+add rule inet toto output ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 224.0.0.0/4, 255.255.255.255 } reject with icmpx admin-prohibited
+add rule inet toto output ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } reject with icmpx admin-prohibited
+RULES
+}
+restrict() { firewall; nft add element inet toto restricted "{ $(id -u "$1") }"; }
+unrestrict() { firewall; nft delete element inet toto restricted "{ $(id -u "$1") }" 2>/dev/null || true; }
 
 case "${1:-}" in
   create-user)
@@ -12,14 +39,22 @@ case "${1:-}" in
     useradd --create-home --shell /bin/bash --groups toto-projects \
       -K UID_MIN=50000 -K UID_MAX=59999 -K GID_MIN=50000 -K GID_MAX=59999 "$2"
     chmod 700 "/home/$2"
+    restrict "$2" # off the local network until someone says otherwise
     ;;
   delete-user)
     [ "$(id -u "$2")" -ge 50000 ] || { echo "toto-priv: $2 is outside the project id range" >&2; exit 2; }
     pkill -KILL -u "$2" || true
+    unrestrict "$2" # before the id is free to be given to someone else
     userdel --remove "$2"
     ;;
+  restrict-lan)
+    restrict "$2"
+    ;;
+  allow-lan)
+    unrestrict "$2"
+    ;;
   *)
-    echo "usage: toto-priv create-user|delete-user toto-p-xxxxxxxx" >&2
+    echo "usage: toto-priv create-user|delete-user|restrict-lan|allow-lan toto-p-xxxxxxxx" >&2
     exit 2
     ;;
 esac

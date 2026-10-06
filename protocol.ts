@@ -17,8 +17,11 @@ export type AgentEvent =
 /** 'ask' pauses the agent for a decision on each risky action; 'auto' approves everything. */
 export type Mode = 'ask' | 'auto';
 
-/** A cloned git repo. Every agent in it runs as the same Linux user. */
-export type Project = { id: string; name: string; repo: string };
+/**
+ * A cloned git repo. Every agent in it runs as the same Linux user. `lan` says whether those
+ * agents may reach devices on the local network; it is absent where projects are not isolated.
+ */
+export type Project = { id: string; name: string; repo: string; lan?: boolean };
 
 /** 'claude' is a chat with Claude Code. 'terminal' is a shell session for running anything by hand. */
 export type Harness = 'claude' | 'terminal';
@@ -51,6 +54,7 @@ export type ClientMessage =
   | { type: 'sync' }
   | { type: 'set_identity'; name: string; email: string }
   | { type: 'create_project'; name: string; repo: string }
+  | { type: 'set_lan'; projectId: string; allow: boolean }
   // Removes the project's files and every agent in it.
   | { type: 'delete_project'; projectId: string }
   | { type: 'create_agent'; projectId: string; name: string; harness: Harness; mode: Mode; worktree: boolean }

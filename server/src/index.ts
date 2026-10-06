@@ -17,6 +17,7 @@ import {
   openApprovals,
   removeProject,
   removeWorktree,
+  setLan,
 } from './projects.ts';
 
 const port = Number(process.env.TOTO_PORT ?? 7860);
@@ -61,6 +62,13 @@ const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen; stop:
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
 await Promise.all(state.projects.map((p) => installEnv(p.user).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
+// Firewall rules do not survive a reboot, so every start puts each project back where it should be.
+// ponytail: if something else wipes the rules while we run, they stay gone until the next start.
+for (const p of state.projects) {
+  if (!p.user) continue;
+  p.lan ??= false;
+  await setLan(p.user, p.lan).catch((err) => console.error(`FIREWALL NOT APPLIED for ${p.name}: ${err.message}`));
+}
 const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
@@ -146,7 +154,8 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();
       const { user, dir } = await createProject(id, msg.repo.trim(), state.identity);
-      state.projects.push({ id, name: msg.name.trim(), repo: msg.repo.trim(), user, dir });
+      // A new project user starts off the local network; toto-priv saw to that when it made the user.
+      state.projects.push({ id, name: msg.name.trim(), repo: msg.repo.trim(), user, dir, lan: user ? false : undefined });
       return commit();
     }
     case 'set_identity': {
@@ -156,6 +165,14 @@ async function handle(msg: ClientMessage, ws: Client) {
       commit();
       for (const project of state.projects) await applyIdentity(project, state.identity);
       return;
+    }
+    case 'set_lan': {
+      const project = state.projects.find((p) => p.id === msg.projectId);
+      if (!project?.user) return;
+      // Change the firewall first, so the app never shows a state the device is not in.
+      await setLan(project.user, msg.allow === true);
+      project.lan = msg.allow === true;
+      return commit();
     }
     case 'delete_project': {
       const project = state.projects.find((p) => p.id === msg.projectId);

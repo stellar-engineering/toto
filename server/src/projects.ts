@@ -113,6 +113,11 @@ export async function createProject(id: string, repo: string, identity: Identity
   return { user, dir: join(home, 'repo') };
 }
 
+/** Opens or closes the local network to a project's user. A no-op in development. */
+export async function setLan(user: string | undefined, allow: boolean) {
+  if (user) await sh('sudo', ['-n', PRIV, allow ? 'allow-lan' : 'restrict-lan', user]);
+}
+
 /** Deletes a project's files. When isolating that is its Linux user, along with anything still running as it. */
 export async function removeProject(id: string, user: string | undefined) {
   if (user) await sh('sudo', ['-n', PRIV, 'delete-user', user]);

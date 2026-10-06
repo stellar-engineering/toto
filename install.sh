@@ -10,7 +10,8 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   apt-get install -y nodejs
 fi
-apt-get install -y git sudo openssh-client tmux
+# nftables for the nft tool only: its service, which would replace the whole firewall, is left off.
+apt-get install -y git sudo openssh-client tmux nftables
 command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
 
 # The server runs unprivileged as `toto`. Each project gets its own user in `toto-projects`.

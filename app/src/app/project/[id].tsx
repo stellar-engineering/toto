@@ -98,6 +98,12 @@ export default function ProjectScreen() {
           ListFooterComponent={
             <>
               <StartAgent projectId={id} />
+              {project?.lan !== undefined && (
+                <View style={[styles.row, { paddingVertical: 8 }]}>
+                  <Check label="Let agents reach devices on your home network" value={project.lan} onChange={(allow) => post({ type: 'set_lan', projectId: id, allow })} />
+                  <Txt tone="ghost" small>{project.lan ? 'Agents here can talk to your router, other computers and anything else on your network.' : 'Agents here can reach the internet, but nothing else on your network.'}</Txt>
+                </View>
+              )}
               {/* Out of the way at the end of the list: rarely wanted, and never by accident. */}
               <Pressable onPress={remove} style={styles.row} accessibilityRole="button">
                 <Txt tone="raspberry">Delete this project</Txt>
