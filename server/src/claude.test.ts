@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
 import { startClaude, toEvents } from './claude.ts';
-import { openApprovals } from './projects.ts';
+import { execFileSync } from 'node:child_process';
+import { envFile, openApprovals } from './projects.ts';
+import { readFrame } from './terminal.ts';
 
 test('maps claude stream-json onto common events', () => {
   assert.deepEqual(
@@ -77,4 +79,20 @@ test('relays approvals to claude and back', async () => {
       { type: 'done', isError: false },
     ],
   );
+});
+
+test('reads a terminal frame: cursor within scrollback, unused rows dropped', () => {
+  // Two lines of scrollback, then a 4-row pane with text on its first two rows and the cursor on the second.
+  assert.deepEqual(readFrame('2 1 4\nold1\nold2\n$ ls\n$ \n\n\n'), { screen: 'old1\nold2\n$ ls\n$ ', cursor: { row: 3, col: 2 } });
+  // A cursor sitting below the text keeps the blank rows above it.
+  assert.deepEqual(readFrame('0 2 3\na\n\n\n'), { screen: 'a\n\n', cursor: { row: 2, col: 0 } });
+});
+
+test('credentials survive the trip through a shell file, whatever they contain', () => {
+  const nasty = `it's a "token" with $HOME \`cmd\` and \\ slashes`;
+  const file = envFile({ ANTHROPIC_API_KEY: nasty, CLAUDE_CODE_OAUTH_TOKEN: '', OTHER: 'not a credential' });
+  assert.ok(!file.includes('OTHER') && !file.includes('CLAUDE_CODE_OAUTH_TOKEN'), 'only credentials that are set');
+  // Source it the way agents do, and read the value back.
+  const got = execFileSync('sh', ['-c', `${file} printf %s "$ANTHROPIC_API_KEY"`]).toString();
+  assert.equal(got, nasty);
 });

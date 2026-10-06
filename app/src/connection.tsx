@@ -13,6 +13,8 @@ type Session = ReturnType<typeof session>;
 type Route = 'local' | 'relay';
 /** How to reach a Toto. `relay` may be empty. */
 export type Settings = { address: string; token: string; relay: string };
+/** A terminal's text, ANSI codes included, and where its cursor is within that text. */
+export type TermScreen = { screen: string; cursor: { row: number; col: number } };
 /** What an agent is doing, worked out from its history. */
 export type Activity = 'idle' | 'working' | 'waiting' | 'failed';
 
@@ -49,7 +51,7 @@ type Connection = {
   /** How many agents are in each state that matters at a glance. */
   tally: { working: number; waiting: number };
   /** The screen of each terminal agent this device has open, by agent id. */
-  screens: Record<string, string>;
+  screens: Record<string, TermScreen>;
 };
 
 const Context = createContext<Connection | null>(null);
@@ -123,7 +125,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         caughtUp.current = true;
         break;
       case 'term':
-        setScreens((all) => ({ ...all, [msg.agentId]: msg.screen }));
+        setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));
         break;
       case 'failed':
         setBusy(false);

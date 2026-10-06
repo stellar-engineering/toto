@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
+import { parse, withCursor, type Span } from './ansi';
 import { useConnection, type TermKey } from './connection';
 import { color, font, gutter, tap } from './theme';
 import { Btn, Txt, styles as ui } from './ui';
@@ -21,14 +22,42 @@ const KEYS: [label: string, key: TermKey, spoken: string][] = [
   ['^D', 'ctrl-d', 'Control D'],
 ];
 
-/** A terminal agent: the session's screen as text, a line to type into it, and the keys a phone keyboard lacks. */
+function spanStyle(span: Span & { cursor?: boolean }): TextStyle {
+  if (span.cursor) return { backgroundColor: color.amber, color: color.tube };
+  // Reverse video swaps the two colours, falling back to the screen's own when one is unset.
+  const fg = span.inverse ? (span.bg ?? color.tube) : (span.fg ?? (span.dim ? color.ghost : undefined));
+  const bg = span.inverse ? (span.fg ?? color.phosphor) : span.bg;
+  return {
+    color: fg,
+    backgroundColor: bg,
+    fontFamily: span.bold ? font.bold : span.italic ? font.italic : undefined,
+    textDecorationLine: span.underline && span.strike ? 'underline line-through' : span.underline ? 'underline' : span.strike ? 'line-through' : undefined,
+  };
+}
+
+/** One row of the screen. Rows that have not changed are not drawn again. */
+const Line = memo(
+  function Line({ spans }: { spans: (Span & { cursor?: boolean })[]; id: string }) {
+    return (
+      <Text style={local.line}>
+        {spans.length ? spans.map((span, i) => <Text key={i} style={spanStyle(span)}>{span.text}</Text>) : ' '}
+      </Text>
+    );
+  },
+  (a, b) => a.id === b.id,
+);
+
+/** A terminal agent: the session's screen in colour, a line to type into it, and the keys a phone keyboard lacks. */
 export function Terminal({ agentId }: { agentId: string }) {
   const { post, screens, status } = useConnection();
   const { width } = useWindowDimensions();
   const cols = Math.floor((width - 2 * gutter) / CHAR_WIDTH);
   const [draft, setDraft] = useState('');
   const scroll = useRef<ScrollView>(null);
+  // Follow new output, unless the reader has scrolled up into the history.
+  const following = useRef(true);
   const online = status === 'open';
+  const term = screens[agentId];
 
   useEffect(() => {
     if (!online) return;
@@ -39,17 +68,39 @@ export function Terminal({ agentId }: { agentId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, cols, online]);
 
+  const lines = useMemo(() => {
+    if (!term) return [];
+    return parse(term.screen).map((spans, row) => {
+      const withIt = row === term.cursor.row ? withCursor(spans, term.cursor.col) : spans;
+      return { spans: withIt, id: JSON.stringify(withIt) };
+    });
+  }, [term]);
+
   const send = () => {
     post({ type: 'term_input', agentId, text: draft, key: 'enter' });
     setDraft('');
+    following.current = true;
   };
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: gutter }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
-        <Txt selectable accessibilityLabel="Terminal screen" style={{ fontSize: FONT_SIZE, lineHeight: FONT_SIZE * 1.35 }}>
-          {screens[agentId] ?? (online ? 'Opening the session…' : 'Reconnecting to your Toto…')}
-        </Txt>
+      <ScrollView
+        ref={scroll}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: gutter }}
+        scrollEventThrottle={64}
+        onScroll={({ nativeEvent: e }) => (following.current = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 40)}
+        onContentSizeChange={() => following.current && scroll.current?.scrollToEnd({ animated: false })}
+        onLayout={() => following.current && scroll.current?.scrollToEnd({ animated: false })}>
+        {term ? (
+          <View accessible accessibilityLabel="Terminal screen">
+            {lines.map((line, i) => (
+              <Line key={i} spans={line.spans} id={line.id} />
+            ))}
+          </View>
+        ) : (
+          <Txt tone="ghost">{online ? 'Opening the session…' : 'Reconnecting to your Toto…'}</Txt>
+        )}
       </ScrollView>
       <ScrollView horizontal keyboardShouldPersistTaps="always" showsHorizontalScrollIndicator={false} style={local.keys} contentContainerStyle={{ gap: 6, paddingHorizontal: gutter, paddingVertical: 6 }}>
         {KEYS.map(([label, key, spoken]) => (
@@ -61,7 +112,7 @@ export function Terminal({ agentId }: { agentId: string }) {
       <View style={local.composer}>
         <Txt tone="amber" weight="bold" style={{ paddingVertical: 11 }}>$</Txt>
         <TextInput
-          style={[ui.input, { fontFamily: font.regular }]}
+          style={ui.input}
           value={draft}
           onChangeText={setDraft}
           onSubmitEditing={send}
@@ -82,6 +133,7 @@ export function Terminal({ agentId }: { agentId: string }) {
 }
 
 const local = StyleSheet.create({
+  line: { color: color.phosphor, fontFamily: font.regular, fontSize: FONT_SIZE, lineHeight: Math.round(FONT_SIZE * 1.35) },
   keys: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.rule },
   key: { minWidth: tap, minHeight: tap - 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: color.bezel, borderRadius: 4, borderBottomWidth: 2, borderBottomColor: color.rule },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: gutter, paddingVertical: 8, backgroundColor: color.bezel },

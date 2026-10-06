@@ -4,7 +4,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
-import { isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
+import { type Screen, isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
 import { startClaude } from './claude.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
@@ -13,6 +13,7 @@ import {
   createProject,
   dataDir,
   deviceKey,
+  installEnv,
   openApprovals,
   removeProject,
   removeWorktree,
@@ -56,8 +57,10 @@ const logs = new Map<string, AgentEvent[]>(
 for (const a of state.agents) a.harness ??= 'claude'; // agents saved before there was a choice
 const running = new Map<string, ReturnType<typeof startClaude>>();
 // Terminal agents someone has open: who is watching, and how to stop.
-const terminals = new Map<string, { viewers: Set<Client>; screen?: string; stop: () => void }>();
+const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen; stop: () => void }>();
 const sshKey = await deviceKey();
+// Credentials change by editing the server's environment and restarting, so this is where projects catch up.
+await Promise.all(state.projects.map((p) => installEnv(p.user).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
 const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
@@ -193,13 +196,13 @@ async function handle(msg: ClientMessage, ws: Client) {
           viewers: new Set(),
           stop: watchTerminal(where(agent), (screen) => {
             term!.screen = screen;
-            for (const viewer of term!.viewers) send(viewer, { type: 'term', agentId: agent.id, screen });
+            for (const viewer of term!.viewers) send(viewer, { type: 'term', agentId: agent.id, ...screen });
           }),
         };
         terminals.set(agent.id, term);
       }
       term.viewers.add(ws);
-      if (term.screen !== undefined) send(ws, { type: 'term', agentId: agent.id, screen: term.screen });
+      if (term.screen) send(ws, { type: 'term', agentId: agent.id, ...term.screen });
       return;
     }
     case 'term_close':

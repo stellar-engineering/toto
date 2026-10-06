@@ -39,8 +39,9 @@ export type ServerMessage =
   | { type: 'event'; agentId: string; event: AgentEvent }
   // Sent once after `sync` has been answered in full; events after this are happening now.
   | { type: 'synced' }
-  // A terminal agent's screen as plain text, sent to clients that have it open.
-  | { type: 'term'; agentId: string; screen: string }
+  // A terminal agent's screen, sent to clients that have it open: recent scrollback and the
+  // visible rows, with ANSI colour and style codes left in, and where the cursor is within it.
+  | { type: 'term'; agentId: string; screen: string; cursor: { row: number; col: number } }
   // A request from this client could not be carried out.
   | { type: 'failed'; message: string };
 
