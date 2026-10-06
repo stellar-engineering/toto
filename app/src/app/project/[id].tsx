@@ -12,9 +12,10 @@ export default function ProjectScreen() {
   const [name, setName] = useState('');
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
+  const [terminal, setTerminal] = useState(false);
 
   const start = () => {
-    request({ type: 'create_agent', projectId: id, name, worktree, mode: auto ? 'auto' : 'ask' });
+    request({ type: 'create_agent', projectId: id, name, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
     setName('');
   };
 
@@ -43,7 +44,7 @@ export default function ProjectScreen() {
               <Pressable style={{ flex: 1 }} accessibilityRole="button">
                 <Text style={styles.rowTitle}>{item.name}</Text>
                 <Text style={styles.muted}>
-                  {item.worktree ? 'Own branch' : 'Main checkout'} · {item.mode === 'auto' ? 'Full auto' : 'Asks first'}
+                  {item.worktree ? 'Own branch' : 'Main checkout'} · {item.harness === 'terminal' ? 'Terminal' : item.mode === 'auto' ? 'Full auto' : 'Asks first'}
                 </Text>
               </Pressable>
             </Link>
@@ -67,13 +68,20 @@ export default function ProjectScreen() {
           <View style={styles.form}>
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Agent name" accessibilityLabel="Agent name" />
             <View style={styles.option}>
-              <Text>Own branch, so it cannot clash with other agents</Text>
+              <Text style={{ flex: 1 }}>Own branch, so it cannot clash with other agents</Text>
               <Switch value={worktree} onValueChange={setWorktree} accessibilityLabel="Own branch" />
             </View>
+            {/* ponytail: a switch while there are two kinds of agent; a picker when Codex and Gemini arrive. */}
             <View style={styles.option}>
-              <Text>Full auto, without asking before it acts</Text>
-              <Switch value={auto} onValueChange={setAuto} accessibilityLabel="Full auto" />
+              <Text style={{ flex: 1 }}>Plain terminal, to run any tool by hand</Text>
+              <Switch value={terminal} onValueChange={setTerminal} accessibilityLabel="Plain terminal" />
             </View>
+            {!terminal && (
+              <View style={styles.option}>
+                <Text style={{ flex: 1 }}>Full auto, without asking before it acts</Text>
+                <Switch value={auto} onValueChange={setAuto} accessibilityLabel="Full auto" />
+              </View>
+            )}
             <Button title={busy ? 'Starting…' : 'Start agent'} onPress={start} disabled={busy || !name.trim()} />
             <View style={{ height: 24 }} />
             <Button title="Delete project" color="#b00020" onPress={deleteProject} />

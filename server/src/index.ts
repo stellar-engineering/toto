@@ -5,6 +5,7 @@ import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
+import { isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
 import { startClaude } from './claude.ts';
 import {
   addWorktree,
@@ -45,7 +46,10 @@ const logs = new Map<string, AgentEvent[]>(
       : [],
   ]),
 );
+for (const a of state.agents) a.harness ??= 'claude'; // agents saved before there was a choice
 const running = new Map<string, ReturnType<typeof startClaude>>();
+// Terminal agents someone has open: who is watching, and how to stop.
+const terminals = new Map<string, { viewers: Set<WebSocket>; screen?: string; stop: () => void }>();
 const sshKey = await deviceKey();
 const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
 
@@ -104,14 +108,30 @@ const start = (agent: AgentRecord) => {
   return proc;
 };
 
+const where = (agent: AgentRecord) => ({
+  user: state.projects.find((p) => p.id === agent.projectId)?.user,
+  cwd: agent.cwd,
+  agentId: agent.id,
+});
+
+const unwatch = (agentId: string, ws: WebSocket) => {
+  const term = terminals.get(agentId);
+  if (!term?.viewers.delete(ws) || term.viewers.size) return;
+  term.stop();
+  terminals.delete(agentId);
+};
+
 /** Stops an agent and forgets it. The caller removes it from `state.agents`. */
 const forget = (agent: AgentRecord) => {
+  terminals.get(agent.id)?.stop();
+  terminals.delete(agent.id);
+  if (agent.harness === 'terminal') killTerminal(where(agent));
   running.get(agent.id)?.stop();
   logs.delete(agent.id);
   rmSync(logFile(agent.id), { force: true });
 };
 
-async function handle(msg: ClientMessage) {
+async function handle(msg: ClientMessage, ws: WebSocket) {
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
     case 'create_project': {
@@ -151,14 +171,43 @@ async function handle(msg: ClientMessage) {
     case 'create_agent': {
       const project = state.projects.find((p) => p.id === msg.projectId);
       if (!project || !isName(msg.name) || !isMode(msg.mode)) throw new Error('An agent needs a project and a name.');
+      const harness = msg.harness === 'terminal' ? 'terminal' : 'claude';
       const id = newId();
       const cwd = msg.worktree === true ? await addWorktree(project, id) : project.dir;
       logs.set(id, []);
-      state.agents.push({ id, projectId: project.id, name: msg.name.trim(), mode: msg.mode, worktree: msg.worktree === true, cwd });
+      state.agents.push({ id, projectId: project.id, name: msg.name.trim(), harness, mode: msg.mode, worktree: msg.worktree === true, cwd });
       return commit();
     }
+    case 'term_open': {
+      if (agent?.harness !== 'terminal') return;
+      const size = (n: unknown, max: number) => Math.min(max, Math.max(10, Math.floor(Number(n)) || 10));
+      await openTerminal(where(agent), size(msg.cols, 300), size(msg.rows, 100));
+      let term = terminals.get(agent.id);
+      if (!term) {
+        term = {
+          viewers: new Set(),
+          stop: watchTerminal(where(agent), (screen) => {
+            term!.screen = screen;
+            for (const viewer of term!.viewers) send(viewer, { type: 'term', agentId: agent.id, screen });
+          }),
+        };
+        terminals.set(agent.id, term);
+      }
+      term.viewers.add(ws);
+      if (term.screen !== undefined) send(ws, { type: 'term', agentId: agent.id, screen: term.screen });
+      return;
+    }
+    case 'term_close':
+      return unwatch(msg.agentId, ws);
+    case 'term_input':
+      if (agent?.harness !== 'terminal') return;
+      return sendToTerminal(
+        where(agent),
+        typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined,
+        isTermKey(msg.key) ? msg.key : undefined,
+      );
     case 'prompt':
-      if (!agent || typeof msg.text !== 'string' || !msg.text.trim()) return;
+      if (agent?.harness !== 'claude' || typeof msg.text !== 'string' || !msg.text.trim()) return;
       emit(agent, { type: 'user', text: msg.text });
       return void (running.get(agent.id) ?? start(agent)).send(msg.text);
     case 'approve':
@@ -185,7 +234,10 @@ wss.on('connection', (ws) => {
       return;
     }
     if (!msg || typeof msg !== 'object') return;
-    handle(msg).catch((err) => send(ws, { type: 'failed', message: err.message }));
+    handle(msg, ws).catch((err) => send(ws, { type: 'failed', message: err.message }));
+  });
+  ws.on('close', () => {
+    for (const agentId of [...terminals.keys()]) unwatch(agentId, ws);
   });
 });
 

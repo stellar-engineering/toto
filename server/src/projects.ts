@@ -36,7 +36,7 @@ const sh = (file: string, args: string[], opts: { cwd?: string } = {}, input = '
     throw new Error(lines.find((l) => /permission denied|fatal:|error:/i.test(l)) ?? lines.pop());
   });
 };
-const run = (user: string | undefined, cwd: string, cmd: string, args: string[], input?: string) => {
+export const run = (user: string | undefined, cwd: string, cmd: string, args: string[], input?: string) => {
   const [file, argv, opts] = command(user, cwd, cmd, args);
   return sh(file, argv, opts, input);
 };

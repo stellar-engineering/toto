@@ -10,7 +10,7 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   apt-get install -y nodejs
 fi
-apt-get install -y git sudo openssh-client
+apt-get install -y git sudo openssh-client tmux
 command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
 
 # The server runs unprivileged as `toto`. Each project gets its own user in `toto-projects`.
@@ -53,6 +53,8 @@ WorkingDirectory=/opt/toto/server
 EnvironmentFile=/etc/toto.env
 ExecStart=/usr/bin/node src/index.ts
 Restart=on-failure
+# Leave terminal agents' tmux sessions running when the server restarts.
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target

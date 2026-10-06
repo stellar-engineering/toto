@@ -4,6 +4,7 @@ import { Alert, Button, FlatList, KeyboardAvoidingView, Platform, Switch, Text, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useConnection, type AgentEvent } from '../../connection';
 import { styles } from '../../styles';
+import { Terminal } from '../../terminal';
 
 const NO_EVENTS: AgentEvent[] = [];
 
@@ -59,6 +60,14 @@ export default function AgentScreen() {
     const rows = events.filter((e) => (e.type === 'approval_request' ? !calls.has(e.id) : e.type !== 'approval_resolved'));
     return { rows, decisions };
   }, [events]);
+
+  if (agent?.harness === 'terminal')
+    return (
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
+        <Stack.Screen options={{ title: agent.name }} />
+        <Terminal agentId={id} />
+      </SafeAreaView>
+    );
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>

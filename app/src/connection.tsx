@@ -2,7 +2,7 @@ import { createContext, useContext, useRef, useState, type ReactNode } from 'rea
 import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
 
-export type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project } from '../../protocol';
+export type { Agent, AgentEvent, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
 
 type Connection = {
   status: 'idle' | 'connecting' | 'open';
@@ -21,6 +21,8 @@ type Connection = {
   sshKey?: string;
   /** Each agent's history, by agent id. */
   events: Record<string, AgentEvent[]>;
+  /** The screen of each terminal agent this device has open, by agent id. */
+  screens: Record<string, string>;
 };
 
 const Context = createContext<Connection | null>(null);
@@ -40,6 +42,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [sshKey, setSshKey] = useState<string>();
   const [identity, setIdentity] = useState<Identity>();
   const [events, setEvents] = useState<Connection['events']>({});
+  const [screens, setScreens] = useState<Connection['screens']>({});
   const socket = useRef<WebSocket | null>(null);
 
   const connect = (url: string, token: string) => {
@@ -64,6 +67,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           // Batch the replay when that shows.
           setEvents((all) => ({ ...all, [msg.agentId]: [...(all[msg.agentId] ?? []), msg.event] }));
           break;
+        case 'term':
+          setScreens((all) => ({ ...all, [msg.agentId]: msg.screen }));
+          break;
         case 'failed':
           setBusy(false);
           Alert.alert('That did not work', msg.message);
@@ -86,7 +92,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Context.Provider value={{ status, notice, connect, post, request, busy, projects, agents, identity, sshKey, events }}>
+    <Context.Provider value={{ status, notice, connect, post, request, busy, projects, agents, identity, sshKey, events, screens }}>
       {children}
     </Context.Provider>
   );
