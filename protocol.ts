@@ -37,6 +37,8 @@ export type ServerMessage =
   // `sshKey` is the device's public key, for the user to add to their git host.
   | { type: 'state'; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
+  // Sent once after `sync` has been answered in full; events after this are happening now.
+  | { type: 'synced' }
   // A terminal agent's screen as plain text, sent to clients that have it open.
   | { type: 'term'; agentId: string; screen: string }
   // A request from this client could not be carried out.

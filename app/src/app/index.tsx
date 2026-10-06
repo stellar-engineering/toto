@@ -1,72 +1,91 @@
-import { Link, Stack } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Button, FlatList, Pressable, Share, Text, TextInput, View } from 'react-native';
-import { useConnection, type Identity } from '../connection';
-import { styles } from '../styles';
+import { FlatList, Pressable, View } from 'react-native';
+import { useConnection, type Project } from '../connection';
+import { Btn, Field, Header, Screen, StatusLine, Txt, styles } from '../ui';
 
-function AuthorForm({ identity }: { identity: Identity }) {
-  const { request, busy } = useConnection();
-  const [name, setName] = useState(identity.name);
-  const [email, setEmail] = useState(identity.email);
-  const changed = name.trim() !== identity.name || email.trim() !== identity.email;
+function ProjectRow({ project }: { project: Project }) {
+  const { agents, activity } = useConnection();
+  const router = useRouter();
+  const mine = agents.filter((a) => a.projectId === project.id);
+  const count = (state: string) => mine.filter((a) => activity[a.id] === state).length;
+  const waiting = count('waiting');
+  const working = count('working');
+  return (
+    <Pressable onPress={() => router.push({ pathname: '/project/[id]', params: { id: project.id } })} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <Txt weight="bold" numberOfLines={1} style={{ flex: 1 }}>{project.name}</Txt>
+          {waiting > 0 ? (
+            <Txt tone="amber" weight="bold">{waiting} waiting on you</Txt>
+          ) : working > 0 ? (
+            <Txt tone="signal">{working} working</Txt>
+          ) : (
+            <Txt tone="ghost">{mine.length === 0 ? 'no agents' : mine.length === 1 ? '1 agent' : `${mine.length} agents`}</Txt>
+          )}
+        </View>
+        <Txt tone="ghost" small numberOfLines={1}>{project.repo.replace(/^(https:\/\/|git@)/, '').replace(/\.git$/, '')}</Txt>
+    </Pressable>
+  );
+}
+
+function AddProject() {
+  const { request, busy, sshKey } = useConnection();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [repo, setRepo] = useState('');
+  if (!open)
+    return (
+      <Pressable onPress={() => setOpen(true)} style={styles.row} accessibilityRole="button">
+        <Txt tone="amber">+ Add a project</Txt>
+      </Pressable>
+    );
+  const add = () => {
+    request({ type: 'create_project', name, repo });
+    setName('');
+    setRepo('');
+    setOpen(false);
+  };
   return (
     <View style={styles.form}>
-      <Text style={styles.rowTitle}>Commit author</Text>
-      <Text style={styles.muted}>Agents make their git commits under this name and email.</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" accessibilityLabel="Commit author name" />
-      <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="you@example.com" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" accessibilityLabel="Commit author email" />
-      <Button title="Save author" onPress={() => request({ type: 'set_identity', name, email })} disabled={busy || !changed || !name.trim() || !email.trim()} />
+      <Field label="name" value={name} onChangeText={setName} placeholder="what to call it" autoFocus autoCapitalize="sentences" />
+      <Field label="repo" value={repo} onChangeText={setRepo} placeholder="git@github.com:you/repo.git" />
+      {!!sshKey && <Txt tone="ghost" small style={{ paddingTop: 8 }}>For a private repo, add this Toto&apos;s SSH key to your git host first. It is under device settings, on the bottom line.</Txt>}
+      <View style={{ flexDirection: 'row', gap: 12, paddingTop: 12 }}>
+        <Btn kind="primary" label="Clone it" onPress={add} disabled={busy || !name.trim() || !repo.trim()} style={{ flex: 1 }} />
+        <Btn label="Cancel" onPress={() => setOpen(false)} />
+      </View>
     </View>
   );
 }
 
 export default function Projects() {
-  const { projects, agents, identity, sshKey, via, request, busy } = useConnection();
-  const [name, setName] = useState('');
-  const [repo, setRepo] = useState('');
-
-  const add = () => {
-    request({ type: 'create_project', name, repo });
-    setName('');
-    setRepo('');
-  };
-
+  const { projects, busy } = useConnection();
   return (
-    <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'Projects' }} />
-      <Text style={[styles.muted, { paddingTop: 8 }]}>{via === 'relay' ? 'Connected through the relay' : 'Connected on your local network'}</Text>
-      <FlatList
-        data={projects}
-        keyExtractor={(p) => p.id}
-        ListEmptyComponent={<Text style={[styles.muted, styles.row]}>No projects yet. Add a repository below.</Text>}
-        renderItem={({ item }) => (
-          <Link href={{ pathname: '/project/[id]', params: { id: item.id } }} asChild>
-            <Pressable style={styles.row} accessibilityRole="button">
-              <Text style={styles.rowTitle}>{item.name}</Text>
-              <Text style={styles.muted}>
-                {item.repo} · {agents.filter((a) => a.projectId === item.id).length} agents
-              </Text>
-            </Pressable>
-          </Link>
-        )}
-        ListFooterComponent={
-          <View style={styles.form}>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Project name" accessibilityLabel="Project name" />
-            <TextInput style={styles.input} value={repo} onChangeText={setRepo} placeholder="git@github.com:owner/repo.git" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Repository address" />
-            <Button title={busy ? 'Cloning…' : 'Add project'} onPress={add} disabled={busy || !name.trim() || !repo.trim()} />
-            {/* Keyed on the saved value so the fields follow it, including when another device changes it. */}
-            {identity && <AuthorForm key={`${identity.name}\n${identity.email}`} identity={identity} />}
-            {!!sshKey && (
-              <View style={styles.form}>
-                <Text style={styles.rowTitle}>SSH key for this Toto</Text>
-                <Text style={styles.muted}>Add it to your git host so Toto can clone and push. On GitHub: Settings, then SSH and GPG keys, then New SSH key.</Text>
-                <Text style={styles.mono} selectable>{sshKey}</Text>
-                <Button title="Share key" onPress={() => Share.share({ message: sshKey })} />
+    <Screen>
+      <Header title="toto" />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          data={projects}
+          keyExtractor={(p) => p.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => <ProjectRow project={item} />}
+          ListEmptyComponent={
+            <View style={styles.row}>
+              <Txt tone="ghost">No projects yet. A project is a git repo your agents work in.</Txt>
+            </View>
+          }
+          ListFooterComponent={
+            busy ? (
+              <View style={styles.row}>
+                <Txt tone="ghost">Cloning…</Txt>
               </View>
-            )}
-          </View>
-        }
-      />
-    </View>
+            ) : (
+              <AddProject />
+            )
+          }
+        />
+      </View>
+      <StatusLine />
+    </Screen>
   );
 }

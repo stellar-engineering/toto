@@ -138,7 +138,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'sync':
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
-      return;
+      return send(ws, { type: 'synced' });
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();

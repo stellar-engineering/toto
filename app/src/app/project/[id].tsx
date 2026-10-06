@@ -1,93 +1,112 @@
-import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Button, FlatList, Pressable, Switch, Text, TextInput, View } from 'react-native';
-import { useConnection } from '../../connection';
-import { styles } from '../../styles';
+import { Alert, FlatList, Pressable, View } from 'react-native';
+import { useConnection, type Activity, type Agent } from '../../connection';
+import { Btn, Check, Field, Header, Screen, Spinner, StatusLine, Txt, styles } from '../../ui';
 
-export default function ProjectScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, agents, post, request, busy } = useConnection();
+const STATE: Record<Activity, { glyph: string; tone: 'ghost' | 'signal' | 'amber' | 'raspberry'; label: string }> = {
+  idle: { glyph: '○', tone: 'ghost', label: 'idle' },
+  working: { glyph: '●', tone: 'signal', label: 'working' },
+  waiting: { glyph: '◆', tone: 'amber', label: 'waiting on you' },
+  failed: { glyph: '✕', tone: 'raspberry', label: 'stopped on an error' },
+};
+
+function AgentRow({ agent }: { agent: Agent }) {
+  const { activity } = useConnection();
   const router = useRouter();
-  const project = projects.find((p) => p.id === id);
+  const state = STATE[activity[agent.id] ?? 'idle'];
+  const terminal = agent.harness === 'terminal';
+  return (
+    <Pressable onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state.label}`}>
+        {/* A fixed-width column, so names line up like a process list. */}
+        <View style={{ width: 14 }}>{!terminal && state.label === 'working' ? <Spinner /> : <Txt tone={terminal ? 'ghost' : state.tone}>{terminal ? '$' : state.glyph}</Txt>}</View>
+        <View style={{ flex: 1 }}>
+          <Txt weight="bold" numberOfLines={1}>{agent.name}</Txt>
+          <Txt tone="ghost" small>{agent.worktree ? 'own branch' : 'main checkout'}</Txt>
+        </View>
+        <Txt tone={terminal ? 'ghost' : state.tone} weight={state.label === 'waiting on you' && !terminal ? 'bold' : 'regular'}>{terminal ? 'terminal' : state.label}</Txt>
+    </Pressable>
+  );
+}
+
+function StartAgent({ projectId }: { projectId: string }) {
+  const { request, busy } = useConnection();
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
   const [terminal, setTerminal] = useState(false);
-
+  if (!open)
+    return (
+      <Pressable onPress={() => setOpen(true)} style={styles.row} accessibilityRole="button">
+        <Txt tone="amber">+ Start an agent</Txt>
+      </Pressable>
+    );
   const start = () => {
-    request({ type: 'create_agent', projectId: id, name, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
+    request({ type: 'create_agent', projectId, name, harness: terminal ? 'terminal' : 'claude', worktree, mode: auto ? 'auto' : 'ask' });
     setName('');
+    setOpen(false);
   };
+  return (
+    <View style={styles.form}>
+      <Field label="name" value={name} onChangeText={setName} placeholder="what to call it" autoFocus />
+      <Check label="Own branch, so it cannot clash with other agents" value={worktree} onChange={setWorktree} />
+      {/* ponytail: a checkbox while there are two kinds of agent; a picker when Codex and Gemini arrive. */}
+      <Check label="Plain terminal, to run any tool by hand" value={terminal} onChange={setTerminal} />
+      {!terminal && <Check label="Full auto: act without asking first" value={auto} onChange={setAuto} />}
+      <View style={{ flexDirection: 'row', gap: 12, paddingTop: 12 }}>
+        <Btn kind="primary" label="Start it" onPress={start} disabled={busy || !name.trim()} style={{ flex: 1 }} />
+        <Btn label="Cancel" onPress={() => setOpen(false)} />
+      </View>
+    </View>
+  );
+}
 
-  const confirmDelete = (title: string, message: string, onDelete: () => void) =>
-    Alert.alert(title, message, [
+export default function ProjectScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { projects, agents, post } = useConnection();
+  const router = useRouter();
+  const project = projects.find((p) => p.id === id);
+
+  const remove = () =>
+    Alert.alert(`Delete ${project?.name ?? 'this project'}?`, 'This removes its files from your Toto, along with every agent in it and any work they have not pushed.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: onDelete },
+      {
+        text: 'Delete project',
+        style: 'destructive',
+        onPress: () => {
+          post({ type: 'delete_project', projectId: id });
+          router.back();
+        },
+      },
     ]);
 
-  const deleteProject = () =>
-    confirmDelete(`Delete ${project?.name ?? 'this project'}?`, 'This removes its files from your Toto, along with every agent in it and any work they have not pushed.', () => {
-      post({ type: 'delete_project', projectId: id });
-      router.back();
-    });
-
   return (
-    <View style={styles.screen}>
-      <Stack.Screen options={{ title: project?.name ?? 'Project' }} />
-      <FlatList
-        data={agents.filter((a) => a.projectId === id)}
-        keyExtractor={(a) => a.id}
-        ListEmptyComponent={<Text style={[styles.muted, styles.row]}>No agents yet. Start one below.</Text>}
-        renderItem={({ item }) => (
-          <View style={[styles.row, styles.option]}>
-            <Link href={{ pathname: '/agent/[id]', params: { id: item.id } }} asChild>
-              <Pressable style={{ flex: 1 }} accessibilityRole="button">
-                <Text style={styles.rowTitle}>{item.name}</Text>
-                <Text style={styles.muted}>
-                  {item.worktree ? 'Own branch' : 'Main checkout'} · {item.harness === 'terminal' ? 'Terminal' : item.mode === 'auto' ? 'Full auto' : 'Asks first'}
-                </Text>
+    <Screen>
+      <Header parent="toto" title={project?.name ?? 'gone'} />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          data={agents.filter((a) => a.projectId === id)}
+          keyExtractor={(a) => a.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => <AgentRow agent={item} />}
+          ListEmptyComponent={
+            <View style={styles.row}>
+              <Txt tone="ghost">Nobody is working here yet.</Txt>
+            </View>
+          }
+          ListFooterComponent={
+            <>
+              <StartAgent projectId={id} />
+              {/* Out of the way at the end of the list: rarely wanted, and never by accident. */}
+              <Pressable onPress={remove} style={styles.row} accessibilityRole="button">
+                <Txt tone="raspberry">Delete this project</Txt>
               </Pressable>
-            </Link>
-            <Button
-              title="Delete"
-              color="#b00020"
-              accessibilityLabel={`Delete agent ${item.name}`}
-              onPress={() =>
-                confirmDelete(
-                  `Delete ${item.name}?`,
-                  item.worktree
-                    ? 'This stops the agent and removes its conversation and any work it has not committed. Its branch is kept.'
-                    : 'This stops the agent and removes its conversation. Files in the main checkout are left as they are.',
-                  () => post({ type: 'delete_agent', agentId: item.id }),
-                )
-              }
-            />
-          </View>
-        )}
-        ListFooterComponent={
-          <View style={styles.form}>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Agent name" accessibilityLabel="Agent name" />
-            <View style={styles.option}>
-              <Text style={{ flex: 1 }}>Own branch, so it cannot clash with other agents</Text>
-              <Switch value={worktree} onValueChange={setWorktree} accessibilityLabel="Own branch" />
-            </View>
-            {/* ponytail: a switch while there are two kinds of agent; a picker when Codex and Gemini arrive. */}
-            <View style={styles.option}>
-              <Text style={{ flex: 1 }}>Plain terminal, to run any tool by hand</Text>
-              <Switch value={terminal} onValueChange={setTerminal} accessibilityLabel="Plain terminal" />
-            </View>
-            {!terminal && (
-              <View style={styles.option}>
-                <Text style={{ flex: 1 }}>Full auto, without asking before it acts</Text>
-                <Switch value={auto} onValueChange={setAuto} accessibilityLabel="Full auto" />
-              </View>
-            )}
-            <Button title={busy ? 'Starting…' : 'Start agent'} onPress={start} disabled={busy || !name.trim()} />
-            <View style={{ height: 24 }} />
-            <Button title="Delete project" color="#b00020" onPress={deleteProject} />
-          </View>
-        }
-      />
-    </View>
+            </>
+          }
+        />
+      </View>
+      <StatusLine />
+    </Screen>
   );
 }
