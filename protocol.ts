@@ -1,7 +1,7 @@
 // Wire protocol between toto-server and its clients, as JSON over WebSocket.
 // Types only: always `import type` so neither Node nor Metro resolves this file at runtime.
 
-/** Server -> client. The common event stream every harness adapter maps onto. */
+/** The common event stream every harness adapter maps onto. */
 export type AgentEvent =
   | { type: 'user'; text: string }
   | { type: 'text'; text: string }
@@ -16,11 +16,25 @@ export type AgentEvent =
 /** 'ask' pauses the agent for a decision on each risky action; 'auto' approves everything. */
 export type Mode = 'ask' | 'auto';
 
-/** Server -> client. `mode` is current state, sent on connect and on change; it is not history. */
-export type ServerMessage = AgentEvent | { type: 'mode'; mode: Mode };
+/** A cloned git repo. Every agent in it runs as the same Linux user. */
+export type Project = { id: string; name: string; repo: string };
+
+/** `worktree` agents work on their own branch and checkout; the rest share the project's main checkout. */
+export type Agent = { id: string; projectId: string; name: string; mode: Mode; worktree: boolean };
+
+/** Server -> client. */
+export type ServerMessage =
+  // The full picture, sent on connect and again whenever it changes.
+  // `sshKey` is the device's public key, for the user to add to their git host.
+  | { type: 'state'; projects: Project[]; agents: Agent[]; sshKey?: string }
+  | { type: 'event'; agentId: string; event: AgentEvent }
+  // A request from this client could not be carried out.
+  | { type: 'failed'; message: string };
 
 /** Client -> server. */
 export type ClientMessage =
-  | { type: 'prompt'; text: string }
-  | { type: 'approve'; id: string; allow: boolean }
-  | { type: 'set_mode'; mode: Mode };
+  | { type: 'create_project'; name: string; repo: string }
+  | { type: 'create_agent'; projectId: string; name: string; mode: Mode; worktree: boolean }
+  | { type: 'prompt'; agentId: string; text: string }
+  | { type: 'approve'; agentId: string; id: string; allow: boolean }
+  | { type: 'set_mode'; agentId: string; mode: Mode };

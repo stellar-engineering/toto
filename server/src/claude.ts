@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { AgentEvent } from '../../protocol.ts';
+import { command } from './projects.ts';
 
 const blockText = (content: unknown): string =>
   typeof content === 'string'
@@ -24,21 +25,32 @@ export function toEvents(msg: any): AgentEvent[] {
   });
 }
 
-/** Starts a long-lived Claude Code process in `cwd`. `onExit` fires once when it is gone. */
-export function startClaude(cwd: string, onEvent: (e: AgentEvent) => void, onExit: () => void) {
-  const child = spawn(
-    process.env.TOTO_CLAUDE_BIN ?? 'claude',
-    [
-      '-p',
-      '--input-format', 'stream-json',
-      '--output-format', 'stream-json',
-      '--verbose',
-      // Claude asks us before anything risky; the server decides whether that reaches the user.
-      '--permission-mode', 'manual',
-      '--permission-prompt-tool', 'stdio',
-    ],
-    { cwd, stdio: ['pipe', 'pipe', 'pipe'] },
-  );
+type Options = {
+  cwd: string;
+  /** Linux user to run as; undefined runs as the server's own user. */
+  user?: string;
+  /** Conversation to pick up again. */
+  sessionId?: string;
+  onEvent: (e: AgentEvent) => void;
+  /** The conversation's id, or undefined when the one asked for could not be resumed. */
+  onSession: (id: string | undefined) => void;
+  /** Fires once when the process is gone. */
+  onExit: () => void;
+};
+
+/** Starts a long-lived Claude Code process. */
+export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }: Options) {
+  const [file, args, opts] = command(user, cwd, process.env.TOTO_CLAUDE_BIN ?? 'claude', [
+    '-p',
+    '--input-format', 'stream-json',
+    '--output-format', 'stream-json',
+    '--verbose',
+    // Claude asks us before anything risky; the server decides whether that reaches the user.
+    '--permission-mode', 'manual',
+    '--permission-prompt-tool', 'stdio',
+    ...(sessionId ? ['--resume', sessionId] : []),
+  ]);
+  const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] });
   const write = (msg: unknown) => child.stdin.write(JSON.stringify(msg) + '\n');
   const respond = (requestId: string, body: object) =>
     write({ type: 'control_response', response: { request_id: requestId, ...body } });
@@ -50,6 +62,7 @@ export function startClaude(cwd: string, onEvent: (e: AgentEvent) => void, onExi
     onEvent({ type: 'approval_resolved', id, allowed });
   };
 
+  let session: string | undefined;
   let stderr = '';
   child.stderr.on('data', (d) => (stderr = (stderr + d).slice(-2000)));
   createInterface({ input: child.stdout }).on('line', (line) => {
@@ -59,6 +72,7 @@ export function startClaude(cwd: string, onEvent: (e: AgentEvent) => void, onExi
     } catch {
       return;
     }
+    if (typeof msg?.session_id === 'string' && msg.session_id !== session) onSession((session = msg.session_id));
     if (msg?.type === 'control_request') {
       const req = msg.request;
       if (req?.subtype !== 'can_use_tool')
@@ -74,20 +88,23 @@ export function startClaude(cwd: string, onEvent: (e: AgentEvent) => void, onExi
   });
 
   let exited = false;
-  const exit = (message: string) => {
+  const exit = (message?: string) => {
     if (exited) return;
     exited = true;
     for (const id of [...pending.keys()]) settle(id, false);
-    onEvent({ type: 'error', message });
+    // It died without resuming, so stop asking for that conversation or every restart fails the same way.
+    if (sessionId && !session) onSession(undefined);
+    if (message) onEvent({ type: 'error', message });
     onExit();
   };
   child.on('error', (err) => exit(`could not start claude: ${err.message}`));
-  child.on('close', (code) => exit(`claude exited (${code})${stderr ? `: ${stderr.trim()}` : ''}`));
+  child.on('close', (code) => exit(code === 0 ? undefined : `claude exited (${code})${stderr ? `: ${stderr.trim()}` : ''}`));
   child.stdin.on('error', () => {}); // a write racing the exit; 'close' reports it
 
   return {
     send: (text: string) => write({ type: 'user', message: { role: 'user', content: text } }),
-    stop: () => child.kill(),
+    // Closing stdin rather than signalling: under sudo the child is not ours to signal.
+    stop: () => child.stdin.end(),
     /** Answers an open approval. Ignores ids that are unknown or already answered. */
     resolve: (id: string, allow: boolean) => {
       const p = pending.get(id);

@@ -1,0 +1,25 @@
+#!/bin/bash
+# The only thing toto-server may run as root: create or delete a project's Linux user.
+# Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
+set -euo pipefail
+
+[[ "${2:-}" =~ ^toto-p-[a-f0-9]{8}$ ]] || { echo "toto-priv: bad user name" >&2; exit 2; }
+
+case "${1:-}" in
+  create-user)
+    # A range of our own: container images run as low ids like 1000 and 1001, and a project user
+    # that shares one could signal those processes (and delete-user below would kill them).
+    useradd --create-home --shell /bin/bash --groups toto-projects \
+      -K UID_MIN=50000 -K UID_MAX=59999 -K GID_MIN=50000 -K GID_MAX=59999 "$2"
+    chmod 700 "/home/$2"
+    ;;
+  delete-user)
+    [ "$(id -u "$2")" -ge 50000 ] || { echo "toto-priv: $2 is outside the project id range" >&2; exit 2; }
+    pkill -KILL -u "$2" || true
+    userdel --remove "$2"
+    ;;
+  *)
+    echo "usage: toto-priv create-user|delete-user toto-p-xxxxxxxx" >&2
+    exit 2
+    ;;
+esac

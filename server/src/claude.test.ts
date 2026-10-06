@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
 import { startClaude, toEvents } from './claude.ts';
+import { openApprovals } from './projects.ts';
 
 test('maps claude stream-json onto common events', () => {
   assert.deepEqual(
@@ -46,21 +47,24 @@ test('relays approvals to claude and back', async () => {
   const events: AgentEvent[] = [];
   let agent!: ReturnType<typeof startClaude>;
   await new Promise<void>((done) => {
-    agent = startClaude(
-      process.cwd(),
-      (e) => {
+    agent = startClaude({
+      cwd: process.cwd(),
+      onEvent: (e) => {
         events.push(e);
-        if (e.type === 'approval_request') {
-          agent.resolve(e.id, e.id === 't1'); // allow the first, deny the second
-          agent.resolve(e.id, true); // a repeat answer must be ignored
+        if (e.type === 'approval_request' && e.id === 't1') {
+          assert.deepEqual(openApprovals(events), ['t1']);
+          agent.resolve(e.id, true);
+          agent.resolve(e.id, false); // a repeat answer must be ignored
         }
-        if (e.type === 'done') done();
+        if (e.type === 'approval_request' && e.id === 't2') agent.resolve(e.id, false);
+        if (e.type === 'done') agent.stop();
       },
-      () => {},
-    );
+      onSession: () => {},
+      onExit: done,
+    });
     agent.send('go');
   });
-  agent.stop();
+  assert.deepEqual(openApprovals(events), []);
 
   assert.deepEqual(
     events.filter((e) => e.type !== 'tool_call'),
