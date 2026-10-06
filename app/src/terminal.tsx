@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from 'react-native';
 import { parse, withCursor, type Span } from './ansi';
 import { useConnection, type TermKey } from './connection';
 import { color, font, gutter, tap } from './theme';
@@ -68,6 +68,13 @@ export function Terminal({ agentId }: { agentId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, cols, online]);
 
+  // The view shrinks while the keyboard slides in, so the bottom can only be found once it has
+  // finished. Without this the prompt ends up cut off below the visible rows.
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => following.current && scroll.current?.scrollToEnd({ animated: true }));
+    return () => shown.remove();
+  }, []);
+
   const lines = useMemo(() => {
     if (!term) return [];
     return parse(term.screen).map((spans, row) => {
@@ -75,6 +82,12 @@ export function Terminal({ agentId }: { agentId: string }) {
       return { spans: withIt, id: JSON.stringify(withIt) };
     });
   }, [term]);
+
+  // Only a scroll the reader made counts. When the keyboard opens the view shrinks and reports a
+  // scroll of its own, which must not be mistaken for someone scrolling up to read.
+  const userScrolled = ({ nativeEvent: e }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    following.current = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 40;
+  };
 
   const send = () => {
     post({ type: 'term_input', agentId, text: draft, key: 'enter' });
@@ -88,8 +101,8 @@ export function Terminal({ agentId }: { agentId: string }) {
         ref={scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: gutter }}
-        scrollEventThrottle={64}
-        onScroll={({ nativeEvent: e }) => (following.current = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 40)}
+        onScrollEndDrag={userScrolled}
+        onMomentumScrollEnd={userScrolled}
         onContentSizeChange={() => following.current && scroll.current?.scrollToEnd({ animated: false })}
         onLayout={() => following.current && scroll.current?.scrollToEnd({ animated: false })}>
         {term ? (
