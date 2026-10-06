@@ -21,7 +21,7 @@ function AuthorForm({ identity }: { identity: Identity }) {
 }
 
 export default function Projects() {
-  const { projects, agents, identity, sshKey, request, busy } = useConnection();
+  const { projects, agents, identity, sshKey, via, request, busy } = useConnection();
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('');
 
@@ -34,6 +34,7 @@ export default function Projects() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Projects' }} />
+      <Text style={[styles.muted, { paddingTop: 8 }]}>{via === 'relay' ? 'Connected through the relay' : 'Connected on your local network'}</Text>
       <FlatList
         data={projects}
         keyExtractor={(p) => p.id}

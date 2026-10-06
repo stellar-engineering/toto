@@ -1,12 +1,12 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
 import { startClaude } from './claude.ts';
+import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
   addWorktree,
   applyIdentity,
@@ -21,6 +21,13 @@ import {
 const port = Number(process.env.TOTO_PORT ?? 7860);
 // ponytail: one shared token stands in for auth until M2 pairing exchanges real keys.
 const token = process.env.TOTO_TOKEN ?? randomBytes(16).toString('hex');
+const { psk, deviceId, relayKey } = keysFromToken(token);
+// Where clients away from the local network reach this device. Unset means local network only.
+const relayUrl = process.env.TOTO_RELAY_URL;
+
+/** A connected client that has proved it holds the key. */
+type Client = { send: (msg: ServerMessage) => void };
+const clients = new Set<Client>();
 
 type ProjectRecord = Project & { user?: string; dir: string };
 type AgentRecord = Agent & { cwd: string; sessionId?: string };
@@ -49,7 +56,7 @@ const logs = new Map<string, AgentEvent[]>(
 for (const a of state.agents) a.harness ??= 'claude'; // agents saved before there was a choice
 const running = new Map<string, ReturnType<typeof startClaude>>();
 // Terminal agents someone has open: who is watching, and how to stop.
-const terminals = new Map<string, { viewers: Set<WebSocket>; screen?: string; stop: () => void }>();
+const terminals = new Map<string, { viewers: Set<Client>; screen?: string; stop: () => void }>();
 const sshKey = await deviceKey();
 const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
 
@@ -59,15 +66,9 @@ const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() 
 const isGitValue = (s: unknown): s is string => typeof s === 'string' && /^[^-\s][^\n\r]{0,99}$/.test(s);
 const newId = () => randomBytes(4).toString('hex');
 
-const sha = (s: string) => createHash('sha256').update(s).digest();
-const authorised = (url = '') =>
-  timingSafeEqual(sha(new URL(url, 'http://x').searchParams.get('token') ?? ''), sha(token));
-
-const wss = new WebSocketServer({ port, verifyClient: ({ req }: { req: IncomingMessage }) => authorised(req.url) });
-
-const send = (ws: WebSocket, msg: ServerMessage) => ws.send(JSON.stringify(msg));
+const send = (client: Client, msg: ServerMessage) => client.send(msg);
 const broadcast = (msg: ServerMessage) => {
-  for (const client of wss.clients) if (client.readyState === client.OPEN) send(client, msg);
+  for (const client of clients) send(client, msg);
 };
 
 /** Persists projects and agents, then tells every client. */
@@ -114,7 +115,7 @@ const where = (agent: AgentRecord) => ({
   agentId: agent.id,
 });
 
-const unwatch = (agentId: string, ws: WebSocket) => {
+const unwatch = (agentId: string, ws: Client) => {
   const term = terminals.get(agentId);
   if (!term?.viewers.delete(ws) || term.viewers.size) return;
   term.stop();
@@ -131,9 +132,13 @@ const forget = (agent: AgentRecord) => {
   rmSync(logFile(agent.id), { force: true });
 };
 
-async function handle(msg: ClientMessage, ws: WebSocket) {
+async function handle(msg: ClientMessage, ws: Client) {
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
+    case 'sync':
+      send(ws, snapshot());
+      for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
+      return;
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();
@@ -223,25 +228,111 @@ async function handle(msg: ClientMessage, ws: WebSocket) {
   }
 }
 
-wss.on('connection', (ws) => {
-  send(ws, snapshot());
-  for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
-  ws.on('message', (raw) => {
-    let msg: ClientMessage;
+/**
+ * One client connection, over any transport that carries text frames. Runs the handshake, then
+ * turns sealed frames into client messages and server messages into sealed frames.
+ */
+function accept(wire: { send: (frame: string) => void; close: () => void }) {
+  let secure: ReturnType<typeof session> | undefined;
+  let client: Client | undefined;
+  const closed = () => {
+    if (!client) return;
+    clients.delete(client);
+    for (const agentId of [...terminals.keys()]) unwatch(agentId, client);
+    client = undefined;
+  };
+  const receive = (raw: string) => {
     try {
-      msg = JSON.parse(String(raw));
+      const frame: Frame = JSON.parse(raw);
+      if (frame.t === 'hello' && !secure) {
+        const nonce = randomBytes(NONCE_BYTES).toString('hex');
+        secure = session(psk, 'device', frame.n, nonce);
+        return wire.send(JSON.stringify({ t: 'hello', n: nonce } satisfies Frame));
+      }
+      if (frame.t !== 'data' || !secure) throw new Error('unexpected frame');
+      const msg: ClientMessage = JSON.parse(secure.open(frame.b));
+      if (!msg || typeof msg !== 'object') throw new Error('not a message');
+      if (!client) {
+        // Opening a frame is the proof that this client holds the key. Until now it was sent nothing.
+        const { seal } = secure;
+        client = { send: (m) => wire.send(JSON.stringify({ t: 'data', b: seal(JSON.stringify(m)) } satisfies Frame)) };
+        clients.add(client);
+      }
+      const to = client;
+      handle(msg, to).catch((err) => send(to, { type: 'failed', message: err.message }));
+    } catch {
+      // Anything malformed or that fails to open ends the connection; a session cannot recover from it.
+      closed();
+      wire.close();
+    }
+  };
+  return { receive, closed };
+}
+
+// --- Local network: clients connect straight to us.
+const wss = new WebSocketServer({ port, maxPayload: 1 << 20 });
+wss.on('connection', (ws) => {
+  const conn = accept({
+    send: (frame) => void (ws.readyState === ws.OPEN && ws.send(frame)),
+    close: () => ws.close(),
+  });
+  ws.on('message', (raw) => conn.receive(String(raw)));
+  ws.on('close', conn.closed);
+});
+
+// --- Relay: we hold one outbound connection, and the relay multiplexes clients over it. Each of
+// our frames is wrapped as { c: client id, m: frame }; { c, t: 'close' } ends that client either way.
+function dialRelay() {
+  const ws = new WebSocket(`${relayUrl}/v1/${deviceId}?role=device&k=${relayKey}`);
+  const conns = new Map<string, ReturnType<typeof accept>>();
+  const tell = (msg: object) => void (ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg)));
+  // A half-dead connection looks open forever, so check it answers.
+  let answered = true;
+  const heartbeat = setInterval(() => {
+    if (!answered) return ws.close();
+    answered = false;
+    if (ws.readyState === ws.OPEN) ws.send('ping');
+  }, 30_000);
+  ws.onopen = () => console.log('relay: connected');
+  ws.onmessage = ({ data }) => {
+    if (data === 'pong') return void (answered = true);
+    let msg: { c?: unknown; t?: unknown; m?: unknown };
+    try {
+      msg = JSON.parse(String(data));
     } catch {
       return;
     }
-    if (!msg || typeof msg !== 'object') return;
-    handle(msg, ws).catch((err) => send(ws, { type: 'failed', message: err.message }));
-  });
-  ws.on('close', () => {
-    for (const agentId of [...terminals.keys()]) unwatch(agentId, ws);
-  });
-});
+    const c = msg.c;
+    if (typeof c !== 'string') return;
+    if (msg.t === 'close') {
+      conns.get(c)?.closed();
+      return void conns.delete(c);
+    }
+    if (typeof msg.m !== 'string') return;
+    let conn = conns.get(c);
+    if (!conn) {
+      conn = accept({
+        send: (frame) => tell({ c, m: frame }),
+        close: () => {
+          conns.delete(c);
+          tell({ c, t: 'close' });
+        },
+      });
+      conns.set(c, conn);
+    }
+    conn.receive(msg.m);
+  };
+  ws.onerror = () => {}; // 'close' follows and does the work
+  ws.onclose = () => {
+    clearInterval(heartbeat);
+    for (const conn of conns.values()) conn.closed();
+    // ponytail: fixed retry. Add backoff with jitter if many devices ever reconnect at once.
+    setTimeout(dialRelay, 5_000);
+  };
+}
+if (relayUrl) dialRelay();
 
 wss.on('listening', () => {
-  console.log(`toto-server on :${port}, data in ${dataDir}`);
+  console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);
   if (!process.env.TOTO_TOKEN) console.log(`token: ${token}`);
 });

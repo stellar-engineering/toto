@@ -40,6 +40,8 @@ if [ ! -f /etc/toto.env ]; then
 fi
 grep -q '^TOTO_ISOLATE=' /etc/toto.env || echo 'TOTO_ISOLATE=1' >> /etc/toto.env
 grep -q '^TOTO_DATA_DIR=' /etc/toto.env || echo 'TOTO_DATA_DIR=/var/lib/toto' >> /etc/toto.env
+# Set to a relay's wss:// address to reach this device from outside the local network.
+grep -q '^TOTO_RELAY_URL=' /etc/toto.env || echo 'TOTO_RELAY_URL=' >> /etc/toto.env
 
 cat > /etc/systemd/system/toto.service <<'EOF'
 [Unit]

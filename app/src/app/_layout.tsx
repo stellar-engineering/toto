@@ -10,12 +10,14 @@ function Connect() {
   // ponytail: typed in by hand each launch. Replaced by Bluetooth pairing and mDNS discovery in M2.
   const [url, setUrl] = useState(process.env.EXPO_PUBLIC_TOTO_URL ?? 'ws://raspberrypi.local:7860');
   const [token, setToken] = useState(process.env.EXPO_PUBLIC_TOTO_TOKEN ?? '');
+  const [relay, setRelay] = useState(process.env.EXPO_PUBLIC_TOTO_RELAY ?? '');
   return (
     <View style={[styles.screen, styles.centred]}>
       <Text style={styles.title}>Toto</Text>
       <TextInput style={styles.input} value={url} onChangeText={setUrl} placeholder="ws://raspberrypi.local:7860" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Server address" />
       <TextInput style={styles.input} value={token} onChangeText={setToken} placeholder="Token" autoCapitalize="none" autoCorrect={false} secureTextEntry accessibilityLabel="Token" />
-      <Button title={status === 'connecting' ? 'Connecting…' : 'Connect'} onPress={() => connect(url, token)} disabled={status === 'connecting'} />
+      <TextInput style={styles.input} value={relay} onChangeText={setRelay} placeholder="Relay address, for when you are away (optional)" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Relay address" />
+      <Button title={status === 'connecting' ? 'Connecting…' : 'Connect'} onPress={() => connect(url, token, relay)} disabled={status === 'connecting'} />
       {!!notice && <Text style={styles.notice}>{notice}</Text>}
     </View>
   );

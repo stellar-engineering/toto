@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "toto-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // Where the hosted relay lives. To run your own, change this to a domain on your account,
+  // or delete it to use your workers.dev address.
+  "routes": [{ "pattern": "toto.royletron.dev", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
+  "observability": { "enabled": true }
+}

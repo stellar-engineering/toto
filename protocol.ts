@@ -1,4 +1,5 @@
-// Wire protocol between toto-server and its clients, as JSON over WebSocket.
+// The messages toto-server and its clients exchange. Each travels as JSON inside an encrypted
+// frame (see server/src/secure.ts), over a WebSocket to the device or through the relay.
 // Types only: always `import type` so neither Node nor Metro resolves this file at runtime.
 
 /** The common event stream every harness adapter maps onto. */
@@ -32,7 +33,7 @@ export type Identity = { name: string; email: string };
 
 /** Server -> client. */
 export type ServerMessage =
-  // The full picture, sent on connect and again whenever it changes.
+  // The full picture, sent in answer to `sync` and again whenever it changes.
   // `sshKey` is the device's public key, for the user to add to their git host.
   | { type: 'state'; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
@@ -43,6 +44,8 @@ export type ServerMessage =
 
 /** Client -> server. */
 export type ClientMessage =
+  // First message of a connection: asks for the state and every agent's history.
+  | { type: 'sync' }
   | { type: 'set_identity'; name: string; email: string }
   | { type: 'create_project'; name: string; repo: string }
   // Removes the project's files and every agent in it.

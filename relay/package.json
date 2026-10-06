@@ -1,0 +1,14 @@
+{
+  "name": "toto-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "wrangler": "^4.105.0"
+  }
+}
