@@ -12,6 +12,18 @@ export const dataDir = process.env.TOTO_DATA_DIR ?? join(homedir(), '.toto');
 const isolate = process.env.TOTO_ISOLATE === '1';
 const PRIV = '/opt/toto/bin/toto-priv';
 
+// Credentials agents need. sudo logs any environment it is handed, so these never go through
+// it: they are written to a private file in each project user's home (over stdin), and every
+// command run as that user reads the file on its way in.
+const SECRETS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+const INSTALL_ENV = `umask 077 && cat > "$HOME/.toto-env"`;
+const WITH_ENV = `[ -r "$HOME/.toto-env" ] && . "$HOME/.toto-env"; exec "$@"`;
+const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
+
+/** The credentials in `env` as a file a POSIX shell can source. */
+export const envFile = (env: Record<string, string | undefined>) =>
+  SECRETS.filter((name) => env[name]).map((name) => `export ${name}=${quote(env[name]!)}\n`).join('');
+
 /**
  * The argv that runs `cmd` in `cwd` as a project's Linux user. The server cannot enter a project's
  * home itself, so the directory change happens on the far side of sudo.
@@ -23,7 +35,7 @@ export function command(
   args: string[],
 ): [string, string[], { cwd?: string }] {
   return user
-    ? ['sudo', ['-n', '-H', '-u', user, '--preserve-env=ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN', '--', 'env', '-C', cwd, cmd, ...args], {}]
+    ? ['sudo', ['-n', '-H', '-u', user, '--', 'env', '-C', cwd, 'sh', '-c', WITH_ENV, 'sh', cmd, ...args], {}]
     : [cmd, args, { cwd }];
 }
 
@@ -62,6 +74,12 @@ const SSH_REPO = /^(ssh:\/\/)?[A-Za-z0-9][\w.-]*@[A-Za-z0-9][\w.-]*[:/][\w.~/-]+
 
 type ProjectDir = { user?: string; dir: string };
 
+/** Gives a project user the server's current credentials. A no-op in development, where agents inherit them. */
+export async function installEnv(user: string | undefined) {
+  if (!user) return;
+  await run(user, `/home/${user}`, 'sh', ['-c', INSTALL_ENV], envFile(process.env));
+}
+
 /**
  * Sets who a project's commits are attributed to. Only for isolated projects: in development
  * the project user is you, and your own git config stands.
@@ -83,6 +101,7 @@ export async function createProject(id: string, repo: string, identity: Identity
   else mkdirSync(home, { recursive: true });
   try {
     if (user) await run(user, home, 'sh', ['-c', INSTALL_KEY], readFileSync(keyFile, 'utf8'));
+    await installEnv(user);
     await run(user, home, 'git', ['clone', '--', repo, 'repo']);
     await applyIdentity({ user, dir: join(home, 'repo') }, identity);
   } catch (err) {
