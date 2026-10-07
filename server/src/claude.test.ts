@@ -99,11 +99,13 @@ test('credentials survive the trip through a shell file, whatever they contain',
 });
 
 test('push: says nothing about the work, and forgets phones that have gone', () => {
-  const message = pushMessage(['ExponentPushToken[a]'], 'approval', 'ab12cd34');
-  assert.deepEqual(message.data, { agentId: 'ab12cd34' });
+  const from = { name: 'Workshop', id: 'f00d' };
+  const message = pushMessage(['ExponentPushToken[a]'], 'approval', 'ab12cd34', from);
+  assert.deepEqual(message.data, { agentId: 'ab12cd34', device: 'f00d' });
+  assert.equal(message.title, 'Workshop');
   assert.equal(message.body, 'An agent is waiting for your go-ahead.');
   assert.equal(message.priority, 'high');
-  assert.equal(pushMessage([], 'done', 'x').priority, 'default');
+  assert.equal(pushMessage([], 'done', 'x', from).priority, 'default');
 
   assert.ok(isPushToken('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]') && isPushToken('ExpoPushToken[a-b_c]'));
   assert.ok(!isPushToken('ExponentPushToken[]') && !isPushToken('https://evil.example') && !isPushToken(7));

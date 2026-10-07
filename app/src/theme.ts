@@ -7,6 +7,7 @@ export const color = {
   rule: '#30362A', // hairlines
   phosphor: '#ECE6D2', // text
   ghost: '#959B85', // secondary text
+  hint: '#7C8270', // placeholder text in an empty field: readable, but plainly not a value
   amber: '#FFB000', // you: the prompt, the primary action, an agent waiting on you
   signal: '#8BD45F', // an agent at work, a healthy link
   raspberry: '#F25C82', // errors, deny, delete

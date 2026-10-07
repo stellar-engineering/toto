@@ -1,6 +1,7 @@
 // Push notifications, sent straight from the device through Expo's push service (which fans
-// out to Google's and Apple's). Nothing about the work leaves the house: the text is fixed, and
-// the only data is the agent's random id, so a tap can open the right conversation.
+// out to Google's and Apple's). Nothing about the work leaves the house: the text is fixed, the
+// title is the device's name, and the only data is two random ids, so a tap can open the right
+// conversation on the right device.
 
 const ENDPOINT = 'https://exp.host/--/api/v2/push/send';
 
@@ -13,12 +14,16 @@ const TEXT: Record<PushKind, string> = {
 export const isPushToken = (t: unknown): t is string =>
   typeof t === 'string' && /^Expo(nent)?PushToken\[[\w-]{1,200}\]$/.test(t);
 
-/** The request body for one notification to every registered phone. */
-export const pushMessage = (tokens: string[], kind: PushKind, agentId: string) => ({
+/**
+ * The request body for one notification to every registered phone. `from` is the device: its
+ * name heads the notification, and its relay id lets a phone that knows several devices tell
+ * which one is calling.
+ */
+export const pushMessage = (tokens: string[], kind: PushKind, agentId: string, from: { name: string; id: string }) => ({
   to: tokens,
-  title: 'Toto',
+  title: from.name,
   body: TEXT[kind],
-  data: { agentId },
+  data: { agentId, device: from.id },
   channelId: 'default',
   sound: 'default',
   // A waiting agent should wake the phone; a finished one can arrive when convenient.
@@ -34,13 +39,13 @@ export function deadTokens(tokens: string[], answer: any): string[] {
 }
 
 /** Sends a notification. Resolves to the tokens that should be forgotten; never rejects. */
-export async function push(tokens: string[], kind: PushKind, agentId: string): Promise<string[]> {
+export async function push(tokens: string[], kind: PushKind, agentId: string, from: { name: string; id: string }): Promise<string[]> {
   if (!tokens.length) return [];
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify(pushMessage(tokens, kind, agentId)),
+      body: JSON.stringify(pushMessage(tokens, kind, agentId, from)),
       signal: AbortSignal.timeout(10_000),
     });
     const answer = await res.json();

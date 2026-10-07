@@ -46,7 +46,7 @@ export function Field({ label, ...input }: TextInputProps & { label: string }) {
   return (
     <View style={styles.field}>
       <Txt tone="ghost" style={styles.fieldLabel}>{label}</Txt>
-      <TextInput accessibilityLabel={label} placeholderTextColor={color.rule} autoCapitalize="none" autoCorrect={false} selectionColor={color.amber} keyboardAppearance="dark" {...input} style={[styles.input, input.style]} />
+      <TextInput accessibilityLabel={label} placeholderTextColor={color.hint} autoCapitalize="none" autoCorrect={false} selectionColor={color.amber} keyboardAppearance="dark" {...input} style={[styles.input, input.style]} />
     </View>
   );
 }
@@ -77,12 +77,12 @@ export function Spinner({ tone = 'signal' }: { tone?: Tone }) {
 }
 
 /** The top line of a screen: where you are, the way back, and anything the screen adds on the right. */
-export function Header({ parent, title, right }: { parent?: string; title: string; right?: ReactNode }) {
+export function Header({ parent, title, right, onBack }: { parent?: string; title: string; right?: ReactNode; onBack?: () => void }) {
   const router = useRouter();
   return (
     <View style={styles.header}>
       {parent !== undefined && (
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={`Back to ${parent}`} hitSlop={12} style={styles.back}>
+        <Pressable onPress={onBack ?? (() => router.back())} accessibilityRole="button" accessibilityLabel={`Go to ${parent}`} hitSlop={12} style={styles.back}>
           <Txt tone="ghost" numberOfLines={1}>{`‹ ${parent} /`}</Txt>
         </Pressable>
       )}

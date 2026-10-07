@@ -41,9 +41,11 @@ export type Identity = { name: string; email: string };
 
 /** Server -> client. */
 export type ServerMessage =
-  // The full picture, sent in answer to `sync` and again whenever it changes.
-  // `sshKey` is the device's public key, for the user to add to their git host.
-  | { type: 'state'; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
+  // The full picture, sent in answer to `sync` and again whenever it changes. `name` is what
+  // this device is called. `sshKey` is its public key, for the user to add to their git host.
+  | { type: 'state'; name: string; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
+  // The answer to `ping`: this device is here, and this is what it is called.
+  | { type: 'pong'; name: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
   // Sent once after `sync` has been answered in full; events after this are happening now.
   | { type: 'synced' }
@@ -57,6 +59,9 @@ export type ServerMessage =
 export type ClientMessage =
   // First message of a connection: asks for the state and every agent's history.
   | { type: 'sync' }
+  // First message of a connection that only wants to know the device is there.
+  | { type: 'ping' }
+  | { type: 'rename_device'; name: string }
   // This phone's push token, so the device can tell it when an agent needs attention.
   | { type: 'register_push'; token: string }
   | { type: 'set_identity'; name: string; email: string }

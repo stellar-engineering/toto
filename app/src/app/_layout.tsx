@@ -2,21 +2,16 @@ import { IBMPlexMono_400Regular, IBMPlexMono_400Regular_Italic, IBMPlexMono_500M
 import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
-import { ConnectionProvider, DEFAULT_RELAY, useConnection } from '../connection';
-import { useTappedAgent } from '../push';
+import { ConnectionProvider, useConnection } from '../connection';
+import { NodeForm } from '../nodeform';
+import { useTapped } from '../push';
 import { color, font, gutter, size } from '../theme';
-import { Btn, Field, Screen, Txt } from '../ui';
+import { Screen, Txt } from '../ui';
 
-/** First run, or after forgetting a Toto: tell the app where one is. */
+/** First run, or after forgetting the last Toto: tell the app where one is. */
 function Setup() {
-  const { status, notice, connect } = useConnection();
-  // ponytail: typed in by hand once. Replaced by Bluetooth pairing and discovery in M2.
-  const [address, setAddress] = useState(process.env.EXPO_PUBLIC_TOTO_URL ?? 'ws://raspberrypi.local:7860');
-  const [token, setToken] = useState(process.env.EXPO_PUBLIC_TOTO_TOKEN ?? '');
-  const [relay, setRelay] = useState(DEFAULT_RELAY);
-  const connecting = status === 'connecting';
   return (
     <Screen bare>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter }}>
@@ -24,33 +19,33 @@ function Setup() {
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
         </Txt>
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
-        <Field label="address" value={address} onChangeText={setAddress} placeholder="ws://raspberrypi.local:7860" keyboardType="url" />
-        <Field label="token" value={token} onChangeText={setToken} placeholder="printed when Toto was installed" secureTextEntry />
-        <Field label="relay" value={relay} onChangeText={setRelay} placeholder="for when you are away (optional)" keyboardType="url" />
-        <Btn kind="primary" label={connecting ? 'Connecting…' : 'Connect'} onPress={() => connect({ address, token, relay })} disabled={connecting || !address.trim() || !token.trim()} style={{ marginTop: 24 }} />
-        <Txt tone="raspberry" style={{ marginTop: 16, minHeight: 44 }} accessibilityLiveRegion="polite">{notice}</Txt>
+        <NodeForm />
       </View>
     </Screen>
   );
 }
 
 function Root() {
-  const { status } = useConnection();
+  const { status, nodes, switchTo } = useConnection();
   const router = useRouter();
-  const ready = status === 'open' || status === 'reconnecting';
+  const ready = status !== 'setup';
 
-  // Tapping a notification opens the conversation it was about, once there are screens to open it on.
-  const tapped = useTappedAgent();
+  // Tapping a notification opens the conversation it was about, on the Toto it came from, once
+  // there are screens to open it on.
+  const tapped = useTapped();
   const opened = useRef<string>(undefined);
   useEffect(() => {
-    if (!ready || !tapped || opened.current === tapped) return;
-    opened.current = tapped;
+    if (!ready || !tapped || opened.current === tapped.agentId) return;
+    opened.current = tapped.agentId;
+    if (tapped.device && nodes.some((n) => n.id === tapped.device)) switchTo(tapped.device);
     // After this render, so the navigator that `ready` has just mounted exists.
-    const timer = setTimeout(() => router.push({ pathname: '/agent/[id]', params: { id: tapped } }), 0);
+    const timer = setTimeout(() => router.push({ pathname: '/agent/[id]', params: { id: tapped.agentId } }), 0);
     return () => clearTimeout(timer);
-  }, [ready, tapped, router]);
+    // `nodes` and `switchTo` are read as they are when the tap arrives; they must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, tapped?.agentId, router]);
 
-  if (status === 'setup' || status === 'connecting') return <Setup />;
+  if (status === 'setup') return <Setup />;
   // Open or reconnecting: keep every screen where it was, so a dropped connection costs nothing but a moment.
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube } }} />;
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Alert, ScrollView, Share, View } from 'react-native';
-import { useConnection, type Identity, type Settings } from '../connection';
+import { Alert, Keyboard, ScrollView, Share, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useConnection, type Identity, type Node } from '../connection';
 import { gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt } from '../ui';
 
@@ -18,13 +19,18 @@ function Author({ identity }: { identity: Identity }) {
   );
 }
 
-function Where({ settings }: { settings: Settings }) {
-  const { relocate } = useConnection();
+function Where({ settings }: { settings: Node }) {
+  const { relocate, request, busy, status } = useConnection();
+  const [name, setName] = useState(settings.name);
   const [address, setAddress] = useState(settings.address);
   const [relay, setRelay] = useState(settings.relay);
+  const renamed = name.trim() !== settings.name;
   const changed = address.trim() !== settings.address || relay.trim() !== settings.relay;
   return (
     <>
+      {/* The name belongs to the device, so changing it needs the device, and shows on every phone. */}
+      <Field label="name" value={name} onChangeText={setName} placeholder="what to call it" autoCapitalize="words" editable={status === 'open'} />
+      {renamed && <Btn kind="primary" label="Rename" onPress={() => { Keyboard.dismiss(); request({ type: 'rename_device', name }); }} disabled={busy || !name.trim() || status !== 'open'} style={{ marginVertical: 12 }} />}
       <Field label="address" value={address} onChangeText={setAddress} placeholder="ws://raspberrypi.local:7860" keyboardType="url" />
       <Field label="relay" value={relay} onChangeText={setRelay} placeholder="none: local network only" keyboardType="url" />
       {changed && <Btn kind="primary" label="Save and reconnect" onPress={() => relocate({ address, relay })} disabled={!address.trim()} style={{ marginTop: 12 }} />}
@@ -41,22 +47,30 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, settings, identity, sshKey, forget } = useConnection();
-  const host = settings?.address.replace(/^wss?:\/\//, '').replace(/:\d+$/, '') ?? '';
+  const { status, via, node: settings, nodes, identity, sshKey, forget } = useConnection();
+  const router = useRouter();
 
   const confirmForget = () =>
     Alert.alert('Forget this Toto?', 'This phone will stop connecting to it. Nothing on the Toto changes, and you can connect again with its address and token.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Forget', style: 'destructive', onPress: forget },
+      {
+        text: 'Forget',
+        style: 'destructive',
+        onPress: () => {
+          // With others left, land on the next one's projects; with none, setup takes over.
+          if (nodes.length > 1) router.back();
+          forget();
+        },
+      },
     ]);
 
   return (
     <Screen bare>
-      <Header parent="toto" title="device" />
+      <Header parent={settings?.name ?? 'toto'} title="device" />
       <View style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled">
           <Section
-            title={host}
+            title={settings?.name ?? ''}
             about={
               status === 'open'
                 ? via === 'relay'
@@ -67,7 +81,7 @@ export default function Device() {
                   : 'Not reachable right now. No relay is set, so this only works on the same network as your Toto.'
             }>
             {/* Keyed on the saved value, so the fields follow it after a save. */}
-            {settings && <Where key={`${settings.address}\n${settings.relay}`} settings={settings} />}
+            {settings && <Where key={`${settings.id}\n${settings.name}\n${settings.address}\n${settings.relay}`} settings={settings} />}
           </Section>
           <Rule />
           {identity && (

@@ -39,7 +39,9 @@ type AgentRecord = Agent & { cwd: string; sessionId?: string };
 const logDir = join(dataDir, 'logs');
 mkdirSync(logDir, { recursive: true });
 const stateFile = join(dataDir, 'state.json');
-const state: { projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
+const state: { name: string; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
+  // What this device is called, until someone gives it a better name from the app.
+  name: hostname(),
   projects: [],
   agents: [],
   pushTokens: [],
@@ -71,7 +73,7 @@ for (const p of state.projects) {
   p.lan ??= false;
   await setLan(p.user, p.lan).catch((err) => console.error(`FIREWALL NOT APPLIED for ${p.name}: ${err.message}`));
 }
-const snapshot = (): ServerMessage => ({ type: 'state', projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
+const snapshot = (): ServerMessage => ({ type: 'state', name: state.name, projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
@@ -97,7 +99,7 @@ const commit = () => {
 
 /** Tells every registered phone, and forgets any that have since uninstalled. */
 const notify = (kind: PushKind, agent: AgentRecord) =>
-  void push(state.pushTokens, kind, agent.id).then((dead) => {
+  void push(state.pushTokens, kind, agent.id, { name: state.name, id: deviceId }).then((dead) => {
     if (!dead.length) return;
     state.pushTokens = state.pushTokens.filter((t) => !dead.includes(t));
     save();
@@ -168,6 +170,12 @@ async function handle(msg: ClientMessage, ws: Client) {
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
       return send(ws, { type: 'synced' });
+    case 'ping':
+      return send(ws, { type: 'pong', name: state.name });
+    case 'rename_device':
+      if (!isName(msg.name)) throw new Error('A name needs to be between 1 and 60 characters.');
+      state.name = msg.name.trim();
+      return commit();
     case 'register_push':
       if (!isPushToken(msg.token) || state.pushTokens.includes(msg.token)) return;
       // The newest few: a phone gets a fresh token now and then, and old ones would otherwise pile up.

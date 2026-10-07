@@ -26,8 +26,9 @@ export async function pushToken(): Promise<string | undefined> {
   }
 }
 
-/** The agent a tapped notification was about, if the app was opened by one. */
-export function useTappedAgent(): string | undefined {
-  const agentId = Notifications.useLastNotificationResponse()?.notification.request.content.data?.agentId;
-  return typeof agentId === 'string' ? agentId : undefined;
+/** The agent a tapped notification was about and the Toto it came from, if the app was opened by one. */
+export function useTapped(): { agentId: string; device?: string } | undefined {
+  const data = Notifications.useLastNotificationResponse()?.notification.request.content.data;
+  if (typeof data?.agentId !== 'string') return undefined;
+  return { agentId: data.agentId, device: typeof data.device === 'string' ? data.device : undefined };
 }

@@ -64,7 +64,7 @@ function StartAgent({ projectId }: { projectId: string }) {
 
 export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, agents, post } = useConnection();
+  const { projects, agents, post, node } = useConnection();
   const router = useRouter();
   const project = projects.find((p) => p.id === id);
 
@@ -83,7 +83,7 @@ export default function ProjectScreen() {
 
   return (
     <Screen>
-      <Header parent="toto" title={project?.name ?? 'gone'} />
+      <Header parent={node?.name ?? 'toto'} title={project?.name ?? 'gone'} />
       <View style={{ flex: 1 }}>
         <FlatList
           data={agents.filter((a) => a.projectId === id)}

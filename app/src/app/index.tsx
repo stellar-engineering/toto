@@ -59,10 +59,11 @@ function AddProject() {
 }
 
 export default function Projects() {
-  const { projects, busy } = useConnection();
+  const { projects, busy, node } = useConnection();
+  const router = useRouter();
   return (
     <Screen>
-      <Header title="toto" />
+      <Header parent="totos" onBack={() => router.push('/nodes')} title={node?.name ?? 'toto'} />
       <View style={{ flex: 1 }}>
         <FlatList
           data={projects}
