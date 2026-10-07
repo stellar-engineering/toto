@@ -86,6 +86,9 @@ const logs = new Map<string, AgentEvent[]>(
 );
 for (const a of state.agents) a.harness ??= 'claude'; // agents saved before there was a choice
 const running = new Map<string, ReturnType<typeof startClaude>>();
+// Agents partway through a turn. A process stays in `running` while it waits for the next prompt,
+// so that alone does not say an agent is working.
+const thinking = new Set<string>();
 // Terminal agents someone has open: who is watching, and how to stop.
 const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
 const sshKey = await deviceKey();
@@ -166,6 +169,7 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
     if (agent.mode === 'auto') running.get(agent.id)?.resolve(event.id, true);
     else notify('approval', agent);
   }
+  if (event.type === 'done' || event.type === 'error') thinking.delete(agent.id);
   if (event.type === 'done') notify('done', agent);
 };
 
@@ -186,7 +190,10 @@ const start = (agent: AgentRecord) => {
       agent.sessionId = id;
       if (logs.has(agent.id)) commit();
     },
-    onExit: () => running.delete(agent.id),
+    onExit: () => {
+      running.delete(agent.id);
+      thinking.delete(agent.id);
+    },
   });
   running.set(agent.id, proc);
   return proc;
@@ -356,6 +363,7 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'prompt':
       if (agent?.harness !== 'claude' || typeof msg.text !== 'string' || !msg.text.trim()) return;
       emit(agent, { type: 'user', text: msg.text });
+      thinking.add(agent.id);
       return void (running.get(agent.id) ?? start(agent)).send(msg.text);
     case 'approve':
       if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true);
@@ -372,7 +380,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       return send(ws, snapshot());
     case 'update': {
       // The install restarts the server, which would cut off anything mid-thought.
-      if (running.size) throw new Error('Agents are working. Update when they have finished.');
+      if (thinking.size) throw new Error('Agents are working. Update when they have finished.');
       updating = true;
       broadcast(snapshot());
       try {
