@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
 <link rel="stylesheet" href="/toto.css">
 </head>
-<body>
+<body class="docs">
 
 <header class="top">
   <a class="name" href="/">toto<span>_</span></a>
@@ -20,21 +20,26 @@
   </nav>
 </header>
 
+<div class="with-side">
+<details class="contents">
+  <summary>On this page</summary>
+  <nav aria-label="On this page">
+    <a href="#need">What you need</a>
+    <a href="#install">Installing</a>
+    <a href="#setup">Setting up from your phone</a>
+    <a href="#claude">Signing in to Claude</a>
+    <a href="#agents">Projects and agents</a>
+    <a href="#device">On the device itself</a>
+    <a href="#relay">The relay</a>
+    <a href="#security">How it is kept private</a>
+    <a href="#limits">Known limits</a>
+  </nav>
+</details>
+
 <main class="doc">
   <section>
     <h1>Documentation</h1>
     <p class="note">Toto is unreleased. This describes how it works today for the people building it. Where something is missing or unproven, it says so.</p>
-    <nav class="contents" aria-label="On this page">
-      <a href="#need">What you need</a>
-      <a href="#install">Installing</a>
-      <a href="#setup">Setting up from your phone</a>
-      <a href="#claude">Signing in to Claude</a>
-      <a href="#agents">Projects and agents</a>
-      <a href="#device">On the device itself</a>
-      <a href="#relay">The relay</a>
-      <a href="#security">How it is kept private</a>
-      <a href="#limits">Known limits</a>
-    </nav>
   </section>
 
   <section aria-labelledby="need">
@@ -146,11 +151,13 @@ npx wrangler deploy</pre>
     </ul>
   </section>
 </main>
+</div>
 
 <footer>
   <span>toto<span class="amber">_</span></span>
   <a href="/">Home</a>
 </footer>
 
+<script src="/toto.js"></script>
 </body>
 </html>
