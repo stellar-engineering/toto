@@ -1,25 +1,33 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from 'react-native';
 import { parse, withCursor, type Span } from './ansi';
 import { useConnection, type TermKey } from './connection';
+import { FILLER, typed } from './keys';
 import { color, font, gutter, tap } from './theme';
-import { Btn, Txt, styles as ui } from './ui';
+import { Txt } from './ui';
 
 const FONT_SIZE = 12;
 // IBM Plex Mono's advance width is 0.6em.
 const CHAR_WIDTH = FONT_SIZE * 0.6;
 const ROWS = 30;
 
-const KEYS: [label: string, key: TermKey, spoken: string][] = [
-  ['esc', 'escape', 'Escape'],
-  ['tab', 'tab', 'Tab'],
-  ['↑', 'up', 'Up arrow'],
-  ['↓', 'down', 'Down arrow'],
-  ['←', 'left', 'Left arrow'],
-  ['→', 'right', 'Right arrow'],
-  ['⌫', 'backspace', 'Backspace'],
-  ['^C', 'ctrl-c', 'Control C'],
-  ['^D', 'ctrl-d', 'Control D'],
+// What a phone keyboard lacks or buries. A string is typed as it is; a key is pressed.
+const EXTRA: { label: string; spoken: string; key?: TermKey; text?: string }[] = [
+  { label: 'esc', spoken: 'Escape', key: 'escape' },
+  { label: 'tab', spoken: 'Tab', key: 'tab' },
+  { label: '^C', spoken: 'Control C', key: 'ctrl-c' },
+  { label: '↑', spoken: 'Up arrow', key: 'up' },
+  { label: '↓', spoken: 'Down arrow', key: 'down' },
+  { label: '←', spoken: 'Left arrow', key: 'left' },
+  { label: '→', spoken: 'Right arrow', key: 'right' },
+  { label: '/', spoken: 'Slash', text: '/' },
+  { label: '-', spoken: 'Dash', text: '-' },
+  { label: '|', spoken: 'Pipe', text: '|' },
+  { label: '~', spoken: 'Tilde', text: '~' },
+  { label: 'home', spoken: 'Home', key: 'home' },
+  { label: 'end', spoken: 'End', key: 'end' },
+  { label: 'pgup', spoken: 'Page up', key: 'pageup' },
+  { label: 'pgdn', spoken: 'Page down', key: 'pagedown' },
 ];
 
 function spanStyle(span: Span & { cursor?: boolean }): TextStyle {
@@ -47,17 +55,24 @@ const Line = memo(
   (a, b) => a.id === b.id,
 );
 
-/** A terminal agent: the session's screen in colour, a line to type into it, and the keys a phone keyboard lacks. */
+/** A terminal agent: the session's screen in colour, typed into a key at a time. */
 export function Terminal({ agentId }: { agentId: string }) {
   const { post, screens, status } = useConnection();
   const { width } = useWindowDimensions();
   const cols = Math.floor((width - 2 * gutter) / CHAR_WIDTH);
-  const [draft, setDraft] = useState('');
   const scroll = useRef<ScrollView>(null);
   // Follow new output, unless the reader has scrolled up into the history.
   const following = useRef(true);
   const online = status === 'open';
   const term = screens[agentId];
+
+  // The keyboard types into an invisible field, and what changes in it is what was typed.
+  const input = useRef<TextInput>(null);
+  const [field, setField] = useState(FILLER);
+  const seen = useRef(FILLER);
+  const [typing, setTyping] = useState(false);
+  // Armed by the ctrl key: the next letter typed is sent with control held.
+  const [ctrl, setCtrl] = useState(false);
 
   useEffect(() => {
     if (!online) return;
@@ -89,10 +104,22 @@ export function Terminal({ agentId }: { agentId: string }) {
     following.current = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 40;
   };
 
-  const send = () => {
-    post({ type: 'term_input', agentId, text: draft, key: 'enter' });
-    setDraft('');
-    following.current = true;
+  const press = (text?: string, key?: TermKey) => {
+    following.current = true; // typing means you want to see where you are typing
+    post({ type: 'term_input', agentId, text, key });
+  };
+
+  const fieldChanged = (next: string) => {
+    const { backspaces, text } = typed(seen.current, next);
+    for (let i = 0; i < backspaces; i++) press(undefined, 'backspace');
+    if (ctrl && /^[a-z]/i.test(text)) {
+      press(undefined, `ctrl-${text[0].toLowerCase()}`);
+      if (text.length > 1) press(text.slice(1));
+      setCtrl(false);
+    } else if (text) press(text);
+    // Top the filler back up before backspace runs out of it, and stop the field growing for ever.
+    seen.current = next.length < 10 || next.length > 400 ? FILLER : next;
+    setField(seen.current);
   };
 
   return (
@@ -100,54 +127,68 @@ export function Terminal({ agentId }: { agentId: string }) {
       <ScrollView
         ref={scroll}
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: gutter }}
+        contentContainerStyle={{ padding: gutter, flexGrow: 1 }}
+        keyboardShouldPersistTaps="always"
         onScrollEndDrag={userScrolled}
         onMomentumScrollEnd={userScrolled}
         onContentSizeChange={() => following.current && scroll.current?.scrollToEnd({ animated: false })}
         onLayout={() => following.current && scroll.current?.scrollToEnd({ animated: false })}>
-        {term ? (
-          <View accessible accessibilityLabel="Terminal screen">
-            {lines.map((line, i) => (
-              <Line key={i} spans={line.spans} id={line.id} />
-            ))}
-          </View>
-        ) : (
-          <Txt tone="ghost">{online ? 'Opening the session…' : 'Reconnecting to your Toto…'}</Txt>
-        )}
+        <Pressable onPress={() => input.current?.focus()} style={{ flexGrow: 1 }} accessibilityRole="button" accessibilityLabel="Terminal screen" accessibilityHint="Opens the keyboard to type into the terminal">
+          {term ? (
+            lines.map((line, i) => <Line key={i} spans={line.spans} id={line.id} />)
+          ) : (
+            <Txt tone="ghost">{online ? 'Opening the session…' : 'Reconnecting to your Toto…'}</Txt>
+          )}
+        </Pressable>
       </ScrollView>
+
+      <TextInput
+        ref={input}
+        style={local.hidden}
+        value={field}
+        onChangeText={fieldChanged}
+        onSubmitEditing={() => press(undefined, 'enter')}
+        submitBehavior="submit"
+        onFocus={() => setTyping(true)}
+        onBlur={() => setTyping(false)}
+        editable={online}
+        caretHidden
+        contextMenuHidden
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="off"
+        importantForAutofill="no"
+        // The one Android keyboard type that reliably turns off predictions and reports each character.
+        keyboardType={Platform.OS === 'android' ? 'visible-password' : 'default'}
+        keyboardAppearance="dark"
+        accessibilityLabel="Terminal input"
+      />
+
       <ScrollView horizontal keyboardShouldPersistTaps="always" showsHorizontalScrollIndicator={false} style={local.keys} contentContainerStyle={{ gap: 6, paddingHorizontal: gutter, paddingVertical: 6 }}>
-        {KEYS.map(([label, key, spoken]) => (
-          <Pressable key={key} onPress={() => post({ type: 'term_input', agentId, key })} accessibilityRole="button" accessibilityLabel={spoken} style={({ pressed }) => [local.key, pressed && { backgroundColor: color.rule }]}>
-            <Txt>{label}</Txt>
-          </Pressable>
+        <Key label={typing ? 'hide' : 'type'} spoken={typing ? 'Hide keyboard' : 'Show keyboard'} lit={typing} onPress={() => (typing ? Keyboard.dismiss() : input.current?.focus())} />
+        <Key label="ctrl" spoken="Control, for the next letter" lit={ctrl} onPress={() => setCtrl(!ctrl)} />
+        {EXTRA.map((k) => (
+          <Key key={k.label} label={k.label} spoken={k.spoken} onPress={() => press(k.text, k.key)} />
         ))}
       </ScrollView>
-      <View style={local.composer}>
-        <Txt tone="amber" weight="bold" style={{ paddingVertical: 11 }}>$</Txt>
-        <TextInput
-          style={ui.input}
-          value={draft}
-          onChangeText={setDraft}
-          onSubmitEditing={send}
-          submitBehavior="submit"
-          placeholder="Type a command"
-          placeholderTextColor={color.ghost}
-          selectionColor={color.amber}
-          keyboardAppearance="dark"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={online}
-          accessibilityLabel="Command"
-        />
-        <Btn kind="primary" label="Enter" onPress={send} disabled={!online} />
-      </View>
     </View>
+  );
+}
+
+function Key({ label, spoken, lit, onPress }: { label: string; spoken: string; lit?: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={spoken} accessibilityState={{ selected: !!lit }} style={({ pressed }) => [local.key, lit && local.lit, pressed && { backgroundColor: color.rule }]}>
+      <Txt tone={lit ? 'amber' : 'phosphor'}>{label}</Txt>
+    </Pressable>
   );
 }
 
 const local = StyleSheet.create({
   line: { color: color.phosphor, fontFamily: font.regular, fontSize: FONT_SIZE, lineHeight: Math.round(FONT_SIZE * 1.35) },
-  keys: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.rule },
-  key: { minWidth: tap, minHeight: tap - 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: color.bezel, borderRadius: 4, borderBottomWidth: 2, borderBottomColor: color.rule },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: gutter, paddingVertical: 8, backgroundColor: color.bezel },
+  // Has to be laid out to take focus, so it is a single invisible point, not display:none.
+  hidden: { position: 'absolute', left: 0, bottom: 0, width: 1, height: 1, opacity: 0, padding: 0 },
+  keys: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.rule, backgroundColor: color.bezel },
+  key: { minWidth: tap, minHeight: tap - 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: color.tube, borderRadius: 4, borderBottomWidth: 2, borderBottomColor: color.rule },
+  lit: { borderBottomColor: color.amber },
 });

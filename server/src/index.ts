@@ -4,7 +4,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
-import { type Screen, isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
+import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startClaude } from './claude.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
@@ -60,7 +60,7 @@ const logs = new Map<string, AgentEvent[]>(
 for (const a of state.agents) a.harness ??= 'claude'; // agents saved before there was a choice
 const running = new Map<string, ReturnType<typeof startClaude>>();
 // Terminal agents someone has open: who is watching, and how to stop.
-const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen; stop: () => void }>();
+const terminals = new Map<string, { viewers: Set<Client>; screen?: Screen } & ReturnType<typeof watchTerminal>>();
 const sshKey = await deviceKey();
 // Credentials change by editing the server's environment and restarting, so this is where projects catch up.
 await Promise.all(state.projects.map((p) => installEnv(p.user).catch((err) => console.error(`credentials for ${p.name}: ${err.message}`))));
@@ -232,13 +232,13 @@ async function handle(msg: ClientMessage, ws: Client) {
       await openTerminal(where(agent), size(msg.cols, 300), size(msg.rows, 100));
       let term = terminals.get(agent.id);
       if (!term) {
-        term = {
-          viewers: new Set(),
-          stop: watchTerminal(where(agent), (screen) => {
-            term!.screen = screen;
-            for (const viewer of term!.viewers) send(viewer, { type: 'term', agentId: agent.id, ...screen });
-          }),
-        };
+        const viewers = new Set<Client>();
+        const watching = watchTerminal(where(agent), (screen) => {
+          const open = terminals.get(agent.id);
+          if (open) open.screen = screen;
+          for (const viewer of viewers) send(viewer, { type: 'term', agentId: agent.id, ...screen });
+        });
+        term = { viewers, ...watching };
         terminals.set(agent.id, term);
       }
       term.viewers.add(ws);
@@ -247,13 +247,12 @@ async function handle(msg: ClientMessage, ws: Client) {
     }
     case 'term_close':
       return unwatch(msg.agentId, ws);
-    case 'term_input':
-      if (agent?.harness !== 'terminal') return;
-      return sendToTerminal(
-        where(agent),
-        typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined,
-        isTermKey(msg.key) ? msg.key : undefined,
-      );
+    case 'term_input': {
+      // Only into a terminal this client has open, which is also what gives us somewhere to send it.
+      const term = agent && terminals.get(agent.id);
+      if (!term?.viewers.has(ws)) return;
+      return term.type(typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined, msg.key);
+    }
     case 'prompt':
       if (agent?.harness !== 'claude' || typeof msg.text !== 'string' || !msg.text.trim()) return;
       emit(agent, { type: 'user', text: msg.text });

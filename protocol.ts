@@ -29,7 +29,12 @@ export type Harness = 'claude' | 'terminal';
 /** `worktree` agents work on their own branch and checkout; the rest share the project's main checkout. */
 export type Agent = { id: string; projectId: string; name: string; harness: Harness; mode: Mode; worktree: boolean };
 
-export type TermKey = 'enter' | 'tab' | 'escape' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'ctrl-c' | 'ctrl-d';
+/** A key with no character of its own. `ctrl-` takes any letter, as in `ctrl-c`. */
+export type TermKey =
+  | 'enter' | 'tab' | 'escape' | 'backspace'
+  | 'up' | 'down' | 'left' | 'right'
+  | 'home' | 'end' | 'pageup' | 'pagedown'
+  | `ctrl-${string}`;
 
 /** Who agents' git commits are attributed to. */
 export type Identity = { name: string; email: string };
@@ -68,5 +73,5 @@ export type ClientMessage =
   // Start and stop receiving a terminal agent's screen. `cols` and `rows` are what fits the viewer.
   | { type: 'term_open'; agentId: string; cols: number; rows: number }
   | { type: 'term_close'; agentId: string }
-  // Types `text`, then presses `key`.
+  // Types `text`, then presses `key`, into a terminal this client has open. Sent per keystroke.
   | { type: 'term_input'; agentId: string; text?: string; key?: TermKey };

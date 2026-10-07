@@ -6,7 +6,7 @@ import type { AgentEvent } from '../../protocol.ts';
 import { startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
-import { readFrame } from './terminal.ts';
+import { readFrame, tmuxKey } from './terminal.ts';
 import { deadTokens, isPushToken, pushMessage } from './push.ts';
 
 test('maps claude stream-json onto common events', () => {
@@ -111,4 +111,11 @@ test('push: says nothing about the work, and forgets phones that have gone', () 
   const answer = { data: [{ status: 'ok', id: '1' }, { status: 'error', details: { error: 'DeviceNotRegistered' } }, { status: 'error', details: { error: 'MessageRateExceeded' } }] };
   assert.deepEqual(deadTokens(['a', 'b', 'c'], answer), ['b']);
   assert.deepEqual(deadTokens(['a'], { errors: [{ code: 'X' }] }), []);
+});
+
+test('terminal keys: only known names reach tmux', () => {
+  assert.equal(tmuxKey('enter'), 'Enter');
+  assert.equal(tmuxKey('pageup'), 'PPage');
+  assert.equal(tmuxKey('ctrl-c'), 'C-c');
+  for (const bad of ['ctrl-C', 'ctrl-cc', 'ctrl-;', 'Enter', '-t other', 'constructor', '', undefined, 5]) assert.equal(tmuxKey(bad), undefined, String(bad));
 });

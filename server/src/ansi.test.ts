@@ -41,3 +41,16 @@ test('places the cursor', { skip }, () => {
   assert.deepEqual(withCursor(line, 6).map((s: any) => [s.text, !!s.cursor]), [['ab', false], ['cd', false], ['  ', false], [' ', true]]);
   assert.deepEqual(withCursor([], 0).map((s: any) => [s.text, !!s.cursor]), [[' ', true]]);
 });
+
+const keys = new URL('../../app/src/keys.ts', import.meta.url);
+const { typed } = skip ? ({} as any) : await import(keys.href);
+
+test('works out keystrokes from how a text field changed', { skip }, () => {
+  assert.deepEqual(typed('xx', 'xxa'), { backspaces: 0, text: 'a' });
+  assert.deepEqual(typed('xxab', 'xxa'), { backspaces: 1, text: '' });
+  assert.deepEqual(typed('xx', 'x'), { backspaces: 1, text: '' }); // backspace into the filler
+  assert.deepEqual(typed('xxls', 'xxls -la'), { backspaces: 0, text: ' -la' }); // several at once, as when pasting
+  assert.deepEqual(typed('xxteh', 'xxthe '), { backspaces: 2, text: 'he ' }); // the keyboard rewrote a word
+  assert.deepEqual(typed('xx', 'xx’“—…'), { backspaces: 0, text: `'"--...` }); // smart punctuation undone
+  assert.deepEqual(typed('abc', 'abc'), { backspaces: 0, text: '' });
+});

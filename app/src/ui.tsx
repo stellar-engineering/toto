@@ -122,7 +122,8 @@ export function Screen({ children, bare }: { children: ReactNode; bare?: boolean
   return (
     // Keyboard avoidance has to be the outermost view: it measures from its own top edge, so
     // anything above it (a header, the status bar) would leave it that much short.
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // On Android too: the app draws edge to edge there, so the system no longer resizes it for the keyboard.
+    <KeyboardAvoidingView style={styles.screen} behavior="padding">
       <SafeAreaView style={{ flex: 1 }} edges={bare && !typing ? ['top', 'bottom'] : ['top']}>
         {children}
       </SafeAreaView>
