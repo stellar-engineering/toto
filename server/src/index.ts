@@ -564,7 +564,10 @@ createServer((socket) => {
       }) + '\n',
     );
   });
-}).listen(control, () => chmodSync(control, 0o660));
+})
+  // The console tool is a convenience; failing to offer it (a path too long for a socket, say) must not stop the server.
+  .on('error', (err) => console.error(`console tool unavailable: ${err.message}`))
+  .listen(control, () => chmodSync(control, 0o660));
 
 wss.on('listening', () => {
   console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);
