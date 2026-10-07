@@ -48,7 +48,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -86,6 +86,12 @@ export default function Device() {
             }>
             {/* Keyed on the saved value, so the fields follow it after a save. */}
             {settings && <Where key={`${settings.id}\n${settings.name}\n${settings.address}\n${settings.relay}`} settings={settings} />}
+          </Section>
+          <Rule />
+          <Section
+            title="Claude"
+            about={claude === 'subscription' ? 'Signed in with your Claude subscription.' : claude === 'api_key' ? 'Using an Anthropic API key.' : 'Not signed in. Agents cannot work until it is.'}>
+            <Btn kind={claude === 'none' ? 'primary' : 'plain'} label={claude === 'none' ? 'Sign in to Claude' : 'Change'} onPress={() => router.push('/claude')} />
           </Section>
           <Rule />
           {identity && (

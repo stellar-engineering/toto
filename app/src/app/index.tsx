@@ -65,7 +65,7 @@ function AddProject() {
 }
 
 export default function Projects() {
-  const { projects, busy, node } = useConnection();
+  const { projects, busy, node, claude } = useConnection();
   const router = useRouter();
   return (
     <Screen>
@@ -75,6 +75,16 @@ export default function Projects() {
         title={node?.name ?? 'toto'}
         right={<Btn label="settings" onPress={() => router.push('/device')} spoken={`Settings for ${node?.name ?? 'this Toto'}`} style={{ minHeight: 32, paddingHorizontal: 10 }} />}
       />
+      {/* Nothing an agent does works until this is done, so it sits above everything until it is. */}
+      {claude === 'none' && (
+        <Pressable onPress={() => router.push('/claude')} style={[styles.row, { flexDirection: 'row', alignItems: 'center' }]} accessibilityRole="button">
+          <View style={styles.faceCol}><Face mood="waiting" size={13} /></View>
+          <View style={{ flex: 1 }}>
+            <Txt tone="amber" weight="bold">Sign in to Claude</Txt>
+            <Txt tone="ghost" small>Your agents cannot work until this Toto is signed in.</Txt>
+          </View>
+        </Pressable>
+      )}
       <View style={{ flex: 1 }}>
         <FlatList
           data={projects}

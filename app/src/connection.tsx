@@ -2,11 +2,11 @@ import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
 import { type Link, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { Agent, AgentEvent, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
+export type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
 
 /** A Toto this phone knows: where it is, the secret shared with it, and what it is called. */
@@ -49,6 +49,10 @@ type Connection = {
   busy: boolean;
   projects: Project[];
   agents: Agent[];
+  /** How this Toto's agents are signed in to Claude. Undefined until it has said. */
+  claude?: ClaudeAccount;
+  /** The page to open for a Claude sign-in that is under way. */
+  claudeLogin?: string;
   /** Who agents' commits are attributed to. */
   identity?: Identity;
   /** The device's public SSH key, when it has one. */
@@ -125,6 +129,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sshKey, setSshKey] = useState<string>();
   const [identity, setIdentity] = useState<Identity>();
+  const [claude, setClaude] = useState<ClaudeAccount>();
+  const [claudeLogin, setClaudeLogin] = useState<string>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [via, setVia] = useState<Route>('local');
@@ -156,6 +162,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setAgents(msg.agents);
         setSshKey(msg.sshKey);
         setIdentity(msg.identity);
+        setClaude((was) => {
+          // However it changed, a sign-in that was under way is over.
+          if (was !== msg.claude) setClaudeLogin(undefined);
+          return msg.claude;
+        });
         setBusy(false);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
         break;
@@ -175,6 +186,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         }
         // Now that we are talking to this Toto, tell it how to reach this phone when the app is closed.
         pushToken().then((token) => token && post({ type: 'register_push', token }));
+        break;
+      case 'claude_login':
+        setBusy(false);
+        setClaudeLogin(msg.url);
         break;
       case 'term':
         setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));
@@ -231,6 +246,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setScreens({});
     setSshKey(undefined);
     setIdentity(undefined);
+    setClaude(undefined);
+    setClaudeLogin(undefined);
     if (!to) return setStatus('setup');
     setStatus('reconnecting');
     dial(to);
@@ -295,7 +312,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, busy, projects, agents, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, busy, projects, agents, claude, claudeLogin, identity, sshKey, events, activity, tally, screens }}>
       {children}
     </Context.Provider>
   );

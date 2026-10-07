@@ -67,6 +67,9 @@ export type TermKey =
   | 'home' | 'end' | 'pageup' | 'pagedown'
   | `ctrl-${string}`;
 
+/** How this device's agents are signed in to Claude, if they are. */
+export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
+
 /** Who agents' git commits are attributed to. */
 export type Identity = { name: string; email: string };
 
@@ -74,7 +77,9 @@ export type Identity = { name: string; email: string };
 export type ServerMessage =
   // The full picture, sent in answer to `sync` and again whenever it changes. `name` is what
   // this device is called. `sshKey` is its public key, for the user to add to their git host.
-  | { type: 'state'; name: string; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
+  | { type: 'state'; name: string; claude: ClaudeAccount; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
+  // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
+  | { type: 'claude_login'; url: string }
   // The answer to `ping`: this device is here, and this is what it is called.
   | { type: 'pong'; name: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
@@ -93,6 +98,13 @@ export type ClientMessage =
   // First message of a connection that only wants to know the device is there.
   | { type: 'ping' }
   | { type: 'rename_device'; name: string }
+  // Signing in to Claude with a subscription takes two steps: ask for the sign-in page, then
+  // send back the code that page shows.
+  | { type: 'claude_login' }
+  | { type: 'claude_code'; code: string }
+  // Or use an API key instead.
+  | { type: 'claude_key'; key: string }
+  | { type: 'claude_logout' }
   // This phone's push token, so the device can tell it when an agent needs attention.
   | { type: 'register_push'; token: string }
   | { type: 'set_identity'; name: string; email: string }

@@ -5,7 +5,8 @@ import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
-import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
+import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
@@ -48,7 +49,8 @@ const stateFile = join(dataDir, 'state.json');
 const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
   // Whether anyone has connected yet. Until someone has, a phone nearby may set this device up
   // over Bluetooth and be handed its keys; afterwards only a phone that already holds them may.
-  claimed: false,
+  // A device with saved state from before this was recorded has been in use, so it has one.
+  claimed: existsSync(stateFile),
   // What this device is called, until someone gives it a better name from the app.
   name: hostname(),
   projects: [],
@@ -59,6 +61,19 @@ const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents
   ...(existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {}),
 };
 const logFile = (agentId: string) => join(logDir, `${agentId}.jsonl`);
+
+// --- How agents are signed in to Claude. Set from the app and kept in a private file; whatever
+// was put in the service's environment by hand is the fallback. Either way it reaches agents
+// through this process's environment (see installEnv).
+type Credential = { kind: 'oauth_token' | 'api_key'; value: string };
+const credentialFile = join(dataDir, 'credentials.json');
+const useCredential = (c: Credential | undefined) => {
+  if (!c) return;
+  process.env[c.kind === 'api_key' ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN'] = c.value;
+  delete process.env[c.kind === 'api_key' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY'];
+};
+if (existsSync(credentialFile)) useCredential(JSON.parse(readFileSync(credentialFile, 'utf8')));
+const claude = (): ClaudeAccount => (process.env.CLAUDE_CODE_OAUTH_TOKEN ? 'subscription' : process.env.ANTHROPIC_API_KEY ? 'api_key' : 'none');
 // ponytail: every log is held in memory and replayed whole on connect. Page it when logs get long.
 const logs = new Map<string, AgentEvent[]>(
   state.agents.map((a) => [
@@ -82,7 +97,7 @@ for (const p of state.projects) {
   p.lan ??= false;
   await setLan(p.user, p.lan).catch((err) => console.error(`FIREWALL NOT APPLIED for ${p.name}: ${err.message}`));
 }
-const snapshot = (): ServerMessage => ({ type: 'state', name: state.name, projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
+const snapshot = (): ServerMessage => ({ type: 'state', name: state.name, claude: claude(), projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
@@ -172,6 +187,22 @@ const forget = (agent: AgentRecord) => {
   rmSync(logFile(agent.id), { force: true });
 };
 
+/** Changes how agents are signed in to Claude, or signs them out, and lets everything know. */
+async function signIn(credential: Credential | undefined) {
+  if (credential) {
+    writeFileSync(credentialFile, JSON.stringify(credential), { mode: 0o600 });
+    useCredential(credential);
+  } else {
+    rmSync(credentialFile, { force: true });
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  }
+  await Promise.all(state.projects.map((p) => installEnv(p.user).catch(() => {})));
+  // Agents already running hold the old sign-in; stopping them means their next turn starts with the new one.
+  for (const proc of running.values()) proc.stop();
+  commit();
+}
+
 async function handle(msg: ClientMessage, ws: Client) {
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
@@ -189,6 +220,26 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (!isName(msg.name)) throw new Error('A name needs to be between 1 and 60 characters.');
       state.name = msg.name.trim();
       return commit();
+    case 'claude_login':
+      return send(ws, { type: 'claude_login', url: await startLogin() });
+    case 'claude_code': {
+      if (typeof msg.code !== 'string' || !msg.code.trim() || msg.code.length > 2000) throw new Error('Paste the code the sign-in page showed you.');
+      return signIn({ kind: 'oauth_token', value: await finishLogin(msg.code) });
+    }
+    case 'claude_key': {
+      if (typeof msg.key !== 'string' || !/^sk-ant-[\w-]{20,}$/.test(msg.key.trim())) throw new Error('That does not look like an Anthropic API key. They start with sk-ant-.');
+      // Try it before keeping it, so a mistyped key is caught here and not by the first agent.
+      const before = { key: process.env.ANTHROPIC_API_KEY, token: process.env.CLAUDE_CODE_OAUTH_TOKEN };
+      useCredential({ kind: 'api_key', value: msg.key.trim() });
+      if (await credentialsWork()) return signIn({ kind: 'api_key', value: msg.key.trim() });
+      delete process.env.ANTHROPIC_API_KEY;
+      if (before.key) process.env.ANTHROPIC_API_KEY = before.key;
+      if (before.token) process.env.CLAUDE_CODE_OAUTH_TOKEN = before.token;
+      throw new Error('Claude did not accept that key.');
+    }
+    case 'claude_logout':
+      await cancelLogin();
+      return signIn(undefined);
     case 'register_push':
       if (!isPushToken(msg.token) || state.pushTokens.includes(msg.token)) return;
       // The newest few: a phone gets a fresh token now and then, and old ones would otherwise pile up.
