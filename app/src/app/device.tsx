@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, ScrollView, Share, View } from 'react-native';
-import { useConnection, type Identity } from '../connection';
+import { useConnection, type Identity, type Settings } from '../connection';
 import { gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt } from '../ui';
 
@@ -14,6 +14,20 @@ function Author({ identity }: { identity: Identity }) {
       <Field label="name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />
       <Field label="email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
       {changed && <Btn kind="primary" label="Save author" onPress={() => request({ type: 'set_identity', name, email })} disabled={busy || !name.trim() || !email.trim()} style={{ marginTop: 12 }} />}
+    </>
+  );
+}
+
+function Where({ settings }: { settings: Settings }) {
+  const { relocate } = useConnection();
+  const [address, setAddress] = useState(settings.address);
+  const [relay, setRelay] = useState(settings.relay);
+  const changed = address.trim() !== settings.address || relay.trim() !== settings.relay;
+  return (
+    <>
+      <Field label="address" value={address} onChangeText={setAddress} placeholder="ws://raspberrypi.local:7860" keyboardType="url" />
+      <Field label="relay" value={relay} onChangeText={setRelay} placeholder="none: local network only" keyboardType="url" />
+      {changed && <Btn kind="primary" label="Save and reconnect" onPress={() => relocate({ address, relay })} disabled={!address.trim()} style={{ marginTop: 12 }} />}
     </>
   );
 }
@@ -41,12 +55,20 @@ export default function Device() {
       <Header parent="toto" title="device" />
       <View style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled">
-          <View style={{ paddingHorizontal: gutter, paddingVertical: 20 }}>
-            <Txt weight="bold" accessibilityRole="header">{host}</Txt>
-            <Txt tone="ghost" small style={{ marginTop: 2 }}>
-              {status === 'open' ? (via === 'relay' ? 'Reached through the relay, encrypted end to end.' : 'Reached directly on your local network, encrypted end to end.') : 'Not reachable right now. Trying again every few seconds.'}
-            </Txt>
-          </View>
+          <Section
+            title={host}
+            about={
+              status === 'open'
+                ? via === 'relay'
+                  ? 'Reached through the relay, encrypted end to end.'
+                  : 'Reached directly on your local network, encrypted end to end.'
+                : settings?.relay
+                  ? 'Not reachable right now. Trying the local network, then the relay, every few seconds.'
+                  : 'Not reachable right now. No relay is set, so this only works on the same network as your Toto.'
+            }>
+            {/* Keyed on the saved value, so the fields follow it after a save. */}
+            {settings && <Where key={`${settings.address}\n${settings.relay}`} settings={settings} />}
+          </Section>
           <Rule />
           {identity && (
             <Section title="Commit author" about="Agents make their git commits under this name and email.">

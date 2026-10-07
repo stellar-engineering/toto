@@ -19,10 +19,15 @@ export type TermScreen = { screen: string; cursor: { row: number; col: number } 
 /** What an agent is doing, worked out from its history. */
 export type Activity = 'idle' | 'working' | 'waiting' | 'failed';
 
-const CONNECT_TIMEOUT = 5_000;
+// How long to wait to hear from the device. The local network answers in a blink or not at all,
+// so it gets little; the relay is given longer, for slow mobile connections.
+const LOCAL_TIMEOUT = 2_500;
+const RELAY_TIMEOUT = 10_000;
 const RETRY_AFTER = 3_000;
 const DEVICE_OFFLINE = 4404; // the relay's close code for "that device is not connected"
 const STORE_KEY = 'toto.settings';
+/** The hosted relay, used unless someone chooses otherwise. */
+export const DEFAULT_RELAY = process.env.EXPO_PUBLIC_TOTO_RELAY ?? 'wss://toto.royletron.dev';
 
 type Connection = {
   /** 'setup' has no Toto to talk to; 'reconnecting' has one it has reached before and is trying again. */
@@ -33,6 +38,8 @@ type Connection = {
   via: Route;
   settings?: Settings;
   connect: (settings: Settings) => void;
+  /** Changes where the saved Toto is looked for, and reconnects. An empty relay means local network only. */
+  relocate: (where: Pick<Settings, 'address' | 'relay'>) => void;
   /** Drops the saved Toto and returns to setup. */
   forget: () => void;
   post: (message: ClientMessage) => void;
@@ -78,18 +85,31 @@ export function activityOf(events: AgentEvent[]): Activity {
 
 // Only a Toto that has connected is ever saved, so one found here is trusted to exist:
 // failing to reach it later means "try again", not "start over".
+const store = (settings: Settings) => SecureStore.setItem(STORE_KEY, JSON.stringify({ ...settings, v: 2 }));
+
 const load = (): Settings | undefined => {
   try {
     const raw = SecureStore.getItem(STORE_KEY);
-    return raw ? JSON.parse(raw) : undefined;
+    if (!raw) return undefined;
+    const { v, ...saved } = JSON.parse(raw) as Settings & { v?: number };
+    // Early versions could save a connection with no relay without anyone having chosen that,
+    // which left the app unable to connect away from home. From v2 an empty relay is deliberate.
+    if (!v && !saved.relay) saved.relay = DEFAULT_RELAY;
+    return saved;
   } catch {
     return undefined;
   }
 };
 
+// Development: `expo start` with an address and token in the environment connects straight away.
+const devSettings: Settings | undefined =
+  __DEV__ && process.env.EXPO_PUBLIC_TOTO_URL && process.env.EXPO_PUBLIC_TOTO_TOKEN
+    ? { address: process.env.EXPO_PUBLIC_TOTO_URL, token: process.env.EXPO_PUBLIC_TOTO_TOKEN, relay: DEFAULT_RELAY }
+    : undefined;
+
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState(load);
-  const [status, setStatus] = useState<Connection['status']>(settings ? 'reconnecting' : 'setup');
+  const [status, setStatus] = useState<Connection['status']>(settings ? 'reconnecting' : devSettings ? 'connecting' : 'setup');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -143,14 +163,27 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     const nonce = bytesToHex(getRandomValues(new Uint8Array(NONCE_BYTES)));
     let secure: Session | undefined;
     let live = false;
-    const giveUp = setTimeout(() => ws.close(), CONNECT_TIMEOUT);
+    // The limit is ours to enforce. Left to the system, an address that does not answer can hold
+    // a connection attempt open for over a minute before reporting it closed.
+    let over = false;
+    const fail = (deviceOffline: boolean) => {
+      if (over) return;
+      over = true;
+      clearTimeout(giveUp);
+      onFail(deviceOffline);
+    };
+    const giveUp = setTimeout(() => {
+      fail(false);
+      ws.close();
+    }, route === 'local' ? LOCAL_TIMEOUT : RELAY_TIMEOUT);
     const sealed = (message: ClientMessage) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'data', b: secure!.seal(JSON.stringify(message)) } satisfies Frame));
     };
 
     ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', n: nonce } satisfies Frame));
     ws.onmessage = (m) => {
-      if (generation.current !== mine) return ws.close();
+      // Not wanted any more, or answered after we had given up on it and moved on.
+      if (generation.current !== mine || (over && !live)) return ws.close();
       try {
         const frame: Frame = JSON.parse(m.data);
         if (frame.t === 'hello' && !secure) {
@@ -178,7 +211,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     ws.onclose = (e) => {
       clearTimeout(giveUp);
       if (generation.current !== mine) return;
-      if (!live) return onFail(e.code === DEVICE_OFFLINE);
+      if (!live) return fail(e.code === DEVICE_OFFLINE);
       socket.current = null;
       setBusy(false);
       onLost();
@@ -196,7 +229,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     };
     const live = () => {
       if (firstTime) {
-        SecureStore.setItem(STORE_KEY, JSON.stringify(to));
+        store(to);
         setSettings(to);
       }
       setStatus('open');
@@ -220,10 +253,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   // A Toto we already know: connect without being asked.
   useEffect(() => {
     if (settings) return dial(settings, false);
-    // Development: `expo start` with an address and token in the environment connects straight away.
-    const address = process.env.EXPO_PUBLIC_TOTO_URL;
-    const token = process.env.EXPO_PUBLIC_TOTO_TOKEN;
-    if (__DEV__ && address && token) dial({ address, token, relay: process.env.EXPO_PUBLIC_TOTO_RELAY ?? '' }, true);
+    if (devSettings) dial(devSettings, true);
     // Once, at launch, with the settings loaded then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -232,6 +262,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setNotice('');
     setStatus('connecting');
     dial(to, true);
+  };
+
+  const relocate = (where: Pick<Settings, 'address' | 'relay'>) => {
+    if (!settings) return;
+    const next = { ...settings, address: where.address.trim(), relay: where.relay.trim() };
+    store(next);
+    setSettings(next);
+    const old = socket.current;
+    socket.current = null;
+    setStatus('reconnecting');
+    dial(next, false); // also disowns the old connection, so closing it below is not taken for a loss
+    old?.close();
   };
 
   const forget = () => {
@@ -261,7 +303,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, notice, via, settings, connect, forget, post, request, busy, projects, agents, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, notice, via, settings, connect, relocate, forget, post, request, busy, projects, agents, identity, sshKey, events, activity, tally, screens }}>
       {children}
     </Context.Provider>
   );

@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { ConnectionProvider, useConnection } from '../connection';
+import { ConnectionProvider, DEFAULT_RELAY, useConnection } from '../connection';
 import { useTappedAgent } from '../push';
 import { color, font, gutter, size } from '../theme';
 import { Btn, Field, Screen, Txt } from '../ui';
@@ -15,7 +15,7 @@ function Setup() {
   // ponytail: typed in by hand once. Replaced by Bluetooth pairing and discovery in M2.
   const [address, setAddress] = useState(process.env.EXPO_PUBLIC_TOTO_URL ?? 'ws://raspberrypi.local:7860');
   const [token, setToken] = useState(process.env.EXPO_PUBLIC_TOTO_TOKEN ?? '');
-  const [relay, setRelay] = useState(process.env.EXPO_PUBLIC_TOTO_RELAY ?? 'wss://toto.royletron.dev');
+  const [relay, setRelay] = useState(DEFAULT_RELAY);
   const connecting = status === 'connecting';
   return (
     <Screen bare>
