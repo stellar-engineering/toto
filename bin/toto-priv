@@ -31,6 +31,7 @@ case "${1:-}" in
       found="$(list no)"
     done
     printf '%s\n' "$found"
+    exit 0
     ;;
   wifi-join)
     # The network's name is the argument; its password, if it has one, arrives on stdin so that
