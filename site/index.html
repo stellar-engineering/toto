@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toto: your agents keep working at home</title>
+<meta name="description" content="Toto is a small box on your own network that runs your coding agents around the clock. You talk to them, and approve what they do, from your phone.">
+<meta name="theme-color" content="#11140f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="/toto.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="name" href="/">toto<span>_</span></a>
+  <nav aria-label="Site">
+    <a href="/" aria-current="page">home</a>
+    <a href="/docs">docs</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <pre class="face" data-face="awake" role="img" aria-label="Toto's mark: a small dog's face made of six characters, blinking."></pre>
+    <h1>Your agents keep working at home.</h1>
+    <p class="pitch">Toto is a small box on your own network that runs your coding agents around the clock. Shut the laptop. They carry on, and ask your phone when they need you.</p>
+    <div class="statusline" aria-live="polite">
+      <pre class="face" data-face="looking" data-live data-nose="none" aria-hidden="true"></pre>
+      <b data-count>Counting Totos…</b>
+    </div>
+    <p class="dim">That number is live. Every Toto that is switched on holds a line open to the relay, and this page asks the relay how many there are.</p>
+  </section>
+
+  <section aria-labelledby="what">
+    <h2 id="what">What it is for</h2>
+    <div class="points">
+      <div>
+        <h3>Work that outlasts your laptop</h3>
+        <p class="dim">An agent halfway through a refactor does not care that you have gone to bed. It runs on the Toto, in your house, until it is done.</p>
+      </div>
+      <div>
+        <h3>A yes or no from your pocket</h3>
+        <p class="dim">When an agent wants to run something risky it stops and your phone buzzes. Allow it or deny it, and it carries on.</p>
+      </div>
+      <div>
+        <h3>Yours, all the way down</h3>
+        <p class="dim">Your hardware, your model account, your code. Nothing Toto says leaves your house readable by anyone but your phone.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="looks">
+    <h2 id="looks">What it looks like</h2>
+    <p>You give an agent a job in a project. It reads, edits and runs things. This is the moment it stops to ask.</p>
+    <div class="session" role="img" aria-label="A conversation in the Toto app. You asked an agent to add retry backoff to a webhook sender. It read a file, and is now asking permission to run the tests, with Allow and Deny buttons.">
+      <div class="you">Add exponential backoff to the webhook sender and cover it with tests.</div>
+      <div class="tool"><span class="dim">▸ </span><b>Read</b><span class="dim">  src/webhooks/sender.ts</span><small>export async function send(hook, payload) {</small></div>
+      <div class="tool"><span class="dim">▸ </span><b>Edit</b><span class="dim">  src/webhooks/sender.ts</span><small>Added a retry loop with jittered backoff.</small></div>
+      <div class="ask">
+        <b><span>|O O|</span><span>Allow Bash?</span></b>
+        <span>npm test -- webhooks</span>
+        <div class="buttons"><span>Allow</span><span>Deny</span></div>
+      </div>
+    </div>
+    <p class="dim">Or tell an agent it need not ask, and it will work straight through. You can change your mind mid-job.</p>
+  </section>
+
+  <section aria-labelledby="parts">
+    <h2 id="parts">The three parts</h2>
+    <dl class="parts">
+      <dt>The box</dt>
+      <dd>A Raspberry Pi 4 or 5, or any small Linux machine. It keeps your projects, each walled off from the others, and runs the agents. Claude Code today; anything else by hand in a terminal you can open from your phone.</dd>
+      <dt>The app</dt>
+      <dd>Finds a new Toto over Bluetooth and puts it on your Wi&#8209;Fi. After that it is where you start agents, read what they are doing, and say yes or no.</dd>
+      <dt>The relay</dt>
+      <dd>For when you are out. Your Toto and your phone both connect to it and it passes sealed messages between them. It cannot read them. You can <a href="/docs#relay">run your own</a>.</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="start">
+    <h2 id="start">Getting one going</h2>
+    <ol class="steps">
+      <li><span>Flash the Toto image onto a card and put it in a Pi, or install Toto on a Linux machine you already have.</span></li>
+      <li><span>Plug it in. In the app, choose <b>Find a new Toto nearby</b>, pick your Wi&#8209;Fi and give it the password.</span></li>
+      <li><span>Sign in to Claude: approve in your browser, paste one code back.</span></li>
+      <li><span>Add a project, which is a git repository, and start an agent in it.</span></li>
+    </ol>
+    <p class="note">Toto is still being built, and none of it is released yet: there is no image to download and the app is not in any store. Everything on this page works today on the handful of Totos counted above. <a href="/docs">The documentation</a> describes it as it is.</p>
+  </section>
+</main>
+
+<footer>
+  <span>toto<span class="amber">_</span></span>
+  <a href="/docs">Documentation</a>
+  <a href="/docs#security">How it is kept private</a>
+</footer>
+
+<script src="/toto.js"></script>
+</body>
+</html>

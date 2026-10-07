@@ -6,9 +6,17 @@
   // Where the hosted relay lives. To run your own, change this to a domain on your account,
   // or delete it to use your workers.dev address.
   "routes": [{ "pattern": "toto.royletron.dev", "custom_domain": true }],
+  // The site at the same address as the relay. Anything that is not a file there reaches the Worker.
+  "assets": { "directory": "../site", "run_worker_first": ["/v1/*", "/stats"] },
   "durable_objects": {
-    "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
+    "bindings": [
+      { "name": "DEVICE", "class_name": "Device" },
+      { "name": "STATS", "class_name": "Stats" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Device"] },
+    { "tag": "v2", "new_sqlite_classes": ["Stats"] }
+  ],
   "observability": { "enabled": true }
 }

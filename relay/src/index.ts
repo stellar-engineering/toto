@@ -13,6 +13,32 @@ const DEVICE_OFFLINE = 4404;
 const CLOSED_BY_DEVICE = 4002;
 const MAX_FRAME = 256 * 1024;
 
+// A device counts as online for this long after it was last heard of, and says so again well
+// inside that. The slack covers a device whose object was restarted and missed its goodbye.
+const FRESH = 30 * 60_000;
+const REMIND = 10 * 60_000;
+
+/**
+ * How many Totos are online, for the site. One object for the whole relay, told by each device's
+ * object when its device connects and leaves. It holds opaque ids and times, nothing else.
+ */
+export class Stats extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS live (id TEXT PRIMARY KEY, seen INTEGER NOT NULL)');
+  }
+  seen(id: string) {
+    this.ctx.storage.sql.exec('INSERT INTO live (id, seen) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET seen = excluded.seen', id, Date.now());
+  }
+  gone(id: string) {
+    this.ctx.storage.sql.exec('DELETE FROM live WHERE id = ?', id);
+  }
+  count(): number {
+    this.ctx.storage.sql.exec('DELETE FROM live WHERE seen < ?', Date.now() - FRESH);
+    return this.ctx.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM live').one().n;
+  }
+}
+
 const sha256 = async (text: string) =>
   [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -42,6 +68,7 @@ export class Device extends DurableObject<Env> {
       // Their sessions were with the old connection; they reconnect and start fresh.
       for (const ws of this.ctx.getWebSockets('client')) ws.close(DEVICE_OFFLINE, 'device reconnected');
       this.ctx.acceptWebSocket(server, ['device']);
+      await this.present();
     } else if (role === 'client') {
       this.ctx.acceptWebSocket(server, ['client', crypto.randomUUID()]);
       // Accept before refusing, so the client learns why from the close code.
@@ -50,6 +77,16 @@ export class Device extends DurableObject<Env> {
       return new Response('bad role', { status: 400 });
     }
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** Tells the count this device is online, and arranges to say so again while it stays. */
+  private async present() {
+    await this.env.STATS.getByName('all').seen(this.ctx.id.toString());
+    await this.ctx.storage.setAlarm(Date.now() + REMIND);
+  }
+
+  async alarm() {
+    if (this.device()) await this.present();
   }
 
   /** The device's live connection. During a handover the newest is last. */
@@ -81,23 +118,30 @@ export class Device extends DurableObject<Env> {
     if (typeof msg.m === 'string') target.send(msg.m);
   }
 
-  webSocketClose(ws: WebSocket) {
+  async webSocketClose(ws: WebSocket) {
     const [role, clientId] = this.ctx.getTags(ws);
     if (role === 'client') return this.device()?.send(JSON.stringify({ c: clientId, t: 'close' }));
     // A device that was replaced has a successor; only hang up on clients when there is none.
     if (this.ctx.getWebSockets('device').some((other) => other !== ws)) return;
+    await this.env.STATS.getByName('all').gone(this.ctx.id.toString());
     for (const client of this.ctx.getWebSockets('client')) client.close(DEVICE_OFFLINE, 'device offline');
   }
 
-  webSocketError(ws: WebSocket) {
-    this.webSocketClose(ws);
+  async webSocketError(ws: WebSocket) {
+    await this.webSocketClose(ws);
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const match = /^\/v1\/([0-9a-f]{32})$/.exec(new URL(request.url).pathname);
-    if (!match) return new Response('Toto relay', { status: 404 });
+    const { pathname } = new URL(request.url);
+    if (pathname === '/stats') {
+      const live = await env.STATS.getByName('all').count();
+      // Briefly cacheable: the site asks every few seconds, from every visitor.
+      return Response.json({ live }, { headers: { 'cache-control': 'public, max-age=10' } });
+    }
+    const match = /^\/v1\/([0-9a-f]{32})$/.exec(pathname);
+    if (!match) return new Response('Not found', { status: 404 });
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('expected a WebSocket', { status: 426 });
     return env.DEVICE.getByName(match[1]).fetch(request);
   },

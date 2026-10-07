@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toto documentation</title>
+<meta name="description" content="How to install Toto, set it up from your phone, sign in to Claude, run agents, and how the relay and its privacy work.">
+<meta name="theme-color" content="#11140f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="/toto.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="name" href="/">toto<span>_</span></a>
+  <nav aria-label="Site">
+    <a href="/">home</a>
+    <a href="/docs" aria-current="page">docs</a>
+  </nav>
+</header>
+
+<main class="doc">
+  <section>
+    <h1>Documentation</h1>
+    <p class="note">Toto is unreleased. This describes how it works today for the people building it. Where something is missing or unproven, it says so.</p>
+    <nav class="contents" aria-label="On this page">
+      <a href="#need">What you need</a>
+      <a href="#install">Installing</a>
+      <a href="#setup">Setting up from your phone</a>
+      <a href="#claude">Signing in to Claude</a>
+      <a href="#agents">Projects and agents</a>
+      <a href="#device">On the device itself</a>
+      <a href="#relay">The relay</a>
+      <a href="#security">How it is kept private</a>
+      <a href="#limits">Known limits</a>
+    </nav>
+  </section>
+
+  <section aria-labelledby="need">
+    <h2 id="need">What you need</h2>
+    <ul>
+      <li>A Raspberry Pi 4 or 5 with 4GB of memory or more, or another 64-bit machine running Debian. Toto has run on a Pi 4 and on an ordinary PC.</li>
+      <li>An Android phone for the app. An iPhone build is in progress and less tested.</li>
+      <li>A Claude subscription, or an Anthropic API key.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="install">
+    <h2 id="install">Installing</h2>
+    <h3>On a Raspberry Pi, from the image</h3>
+    <p>The image is the smallest official Raspberry Pi OS with Toto already on it. Flash it to a card with Raspberry Pi Imager (Choose OS, then Use custom), put the card in the Pi and plug it in. There is no login to set up: on first start it gives itself a name and a key and waits to be found by your phone.</p>
+    <p class="dim">The image is built by <code>image/build.sh</code> and is not yet available to download.</p>
+    <h3>On a machine you already have</h3>
+    <p>From a copy of the source, on 64-bit Debian or Raspberry Pi OS:</p>
+    <pre class="block">sudo ./install.sh</pre>
+    <p>It installs Node, Claude Code and Toto, sets Toto up as a service, and prints the address and token to give the app. It is safe to run again to upgrade.</p>
+  </section>
+
+  <section aria-labelledby="setup">
+    <h2 id="setup">Setting up from your phone</h2>
+    <h3>Over Bluetooth</h3>
+    <p>A Toto that has no owner announces itself over Bluetooth. In the app choose <b>Find a new Toto nearby</b>. The app connects, shows you the Wi&#8209;Fi networks the Toto can see, and sends it the one you pick with its password. Then it collects the Toto's keys and adds it. You type nothing but the Wi&#8209;Fi password.</p>
+    <p>Once a Toto has an owner it stops announcing itself. To add another phone, or to move it to a new network, open pairing mode <a href="#device">at the device</a>. A Toto that loses its network for a minute also starts announcing again, but then only a phone that already holds its key can talk to it.</p>
+    <h3>By address and token</h3>
+    <p>A machine with no Bluetooth is added by hand: its address, such as <code>ws://192.168.1.20:7860</code>, and the token the installer printed.</p>
+    <h3>More than one</h3>
+    <p>The app keeps a list of your Totos and shows which are online. Each has a name, which lives on the device, so renaming it on one phone renames it on all of them.</p>
+  </section>
+
+  <section aria-labelledby="claude">
+    <h2 id="claude">Signing in to Claude</h2>
+    <p>Until a Toto is signed in, the app says so above your projects. Tap it, then <b>Sign in with Claude</b>. Your browser opens a Claude page asking you to approve; it ends by showing a code. Copy it, come back, paste it. The sign-in lasts a year and uses your plan's allowance.</p>
+    <p>Under the bonnet the Toto is running Claude Code's own sign-in and the app is passing the link and the code between it and you. The token it produces stays on the Toto.</p>
+    <p>Or choose <b>Use an API key instead</b> and paste a key from the Anthropic console. It is tried before it is kept.</p>
+  </section>
+
+  <section aria-labelledby="agents">
+    <h2 id="agents">Projects and agents</h2>
+    <p>A project is a git repository cloned onto the Toto. Each project gets its own Linux user, so agents in one cannot read another's files or credentials.</p>
+    <ul>
+      <li><b>Private repositories.</b> Each Toto has an SSH key, shown under settings. Add it to your git host and use the repository's SSH address.</li>
+      <li><b>Commit author.</b> Set the name and email agents commit under, in settings.</li>
+      <li><b>Own branch.</b> By default each agent works in its own checkout on its own branch, so several can work in one project without colliding.</li>
+      <li><b>Asks, or full auto.</b> An agent that asks stops before anything risky and waits for you. One on full auto does not. You can switch at any point.</li>
+      <li><b>Terminal agents.</b> A shell in the project, typed into from your phone. Use it for anything Toto has no chat for yet, such as other coding tools.</li>
+      <li><b>Home network.</b> Agents can reach the internet but not the other devices on your network, unless you allow it for that project.</li>
+    </ul>
+    <p>Your phone is notified when an agent stops to ask and when one finishes. The notification says only that; nothing about the work is in it.</p>
+  </section>
+
+  <section aria-labelledby="device">
+    <h2 id="device">On the device itself</h2>
+    <p>Plug a display into a Toto made from the image and it shows a live screen instead of a login: its name, its network, whether it has an owner and what its agents are doing. From a keyboard, or over SSH on an ordinary install, the same tool is <code>toto</code>:</p>
+    <pre class="block">sudo toto              <span class="c"># the live screen</span>
+sudo toto status       <span class="c"># the same, once</span>
+sudo toto pair         <span class="c"># pairing mode for ten minutes</span>
+sudo toto pair off
+sudo toto wifi         <span class="c"># choose a network</span>
+sudo toto name Workshop</pre>
+    <p>Pairing mode makes the Toto announce itself over Bluetooth again and lets a new phone set it up. It ends when a phone does, or when the time runs out.</p>
+  </section>
+
+  <section aria-labelledby="relay">
+    <h2 id="relay">The relay</h2>
+    <p>At home your phone talks to your Toto directly. Away from home it cannot, because your Toto sits behind your router. So the Toto keeps one outgoing connection open to a relay, your phone connects to the same place, and the relay passes messages between the two.</p>
+    <p>The app tries your home network first and falls back to the relay after a couple of seconds.</p>
+    <h3>What it can and cannot see</h3>
+    <div class="scroll">
+      <table>
+        <tr><th>The relay sees</th><th>The relay does not see</th></tr>
+        <tr><td>That a Toto is online, by an id derived from its key</td><td>Your token, or anything it could be worked out from</td></tr>
+        <tr><td>When your phone connects to it</td><td>Your code, your prompts or what agents say</td></tr>
+        <tr><td>How much is sent, and when</td><td>Your Claude sign-in, your SSH key, your Wi&#8209;Fi password</td></tr>
+      </table>
+    </div>
+    <p>The count on the home page comes from the first row: the relay knows how many Totos are connected, and nothing more about them.</p>
+    <h3>Running your own</h3>
+    <p>The relay is a small Cloudflare Worker, and the free plan is enough. From the <code>relay</code> folder:</p>
+    <pre class="block">npm install
+npx wrangler login
+npx wrangler deploy</pre>
+    <p>Then put its address, with <code>wss://</code> in front, in <code>TOTO_RELAY_URL</code> in <code>/etc/toto.env</code> on the Toto and in the relay field in the app's settings. An empty relay in the app means home network only.</p>
+  </section>
+
+  <section aria-labelledby="security">
+    <h2 id="security">How it is kept private</h2>
+    <ul>
+      <li><b>Every connection is encrypted between your phone and your Toto,</b> at home and through the relay alike. Each one starts with fresh random values from both ends, and messages that are forged, repeated or out of order are thrown away.</li>
+      <li><b>Bluetooth setup has its own key exchange,</b> so your Wi&#8209;Fi password is not readable in the air. A Toto that has an owner mixes its key into that exchange, so a stranger nearby gets no answer.</li>
+      <li><b>Projects are separated by the operating system.</b> One Linux user each, a private home directory, and a firewall rule keeping it off your home network.</li>
+      <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper to do four things as root: make or remove a project's user, open or close the home network to it, and list or join Wi&#8209;Fi.</li>
+      <li><b>Secrets stay off command lines and out of logs.</b> Credentials reach agents through a private file, and what you type into a terminal agent goes down a private pipe.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">Known limits</h2>
+    <ul>
+      <li><b>First setup trusts whoever is nearby.</b> Until a Toto has an owner, any phone in Bluetooth range can claim it. A Pi has no screen to confirm on.</li>
+      <li><b>One key per Toto.</b> Every phone you add holds the same token. Someone who recorded your traffic and later got that token could read it.</li>
+      <li><b>One SSH key per Toto.</b> Added to your git account, it reaches every repository that account can.</li>
+      <li><b>An agent can still reach services on the Toto's own loopback address.</b></li>
+      <li><b>The relay has no usage limits yet.</b></li>
+      <li><b>Only Claude Code has a chat.</b> Other tools run in a terminal agent.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <span>toto<span class="amber">_</span></span>
+  <a href="/">Home</a>
+</footer>
+
+</body>
+</html>
