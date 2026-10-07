@@ -41,7 +41,7 @@ Then, in the app, choose **Find a new Toto nearby**. The app is not in a store y
 | `server/` | What runs on the Toto: projects, agents, the encrypted connection to phones, Bluetooth setup. Node 24, TypeScript run directly. |
 | `app/` | The phone app. Expo and React Native. |
 | `relay/` | The relay, and the site it serves. A Cloudflare Worker with Durable Objects. |
-| `site/` | The site at toto.royletron.dev. Plain HTML, CSS and a little JavaScript. |
+| `site/` | The site at toto.royletron.dev. Plain HTML, CSS and a little JavaScript. [How it is built](https://toto.royletron.dev/architecture), and its branding. |
 | `bin/` | What runs as root on a Toto: the helper the server asks for privileged things, the updater, first-boot setup. |
 | `image/` | Builds the flashable Raspberry Pi image from the official Raspberry Pi OS Lite. |
 | `protocol.ts` | The messages the app and the server exchange. Types only. |

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How this site is built: Toto</title>
+<meta name="description" content="How the Toto site is built and served from the same Cloudflare Worker as the relay, and the colours, type, mark and voice it follows.">
+<meta name="theme-color" content="#11140f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="/toto.css">
+</head>
+<body class="docs">
+
+<header class="top">
+  <a class="name" href="/">toto<span>_</span></a>
+  <nav aria-label="Site">
+    <a href="/">home</a>
+    <a href="/docs">docs</a>
+    <a href="/architecture" aria-current="page">site</a>
+  </nav>
+</header>
+
+<div class="with-side">
+<details class="contents">
+  <summary>On this page</summary>
+  <nav aria-label="On this page">
+    <a href="#files">What is in it</a>
+    <a href="#served">How it is served</a>
+    <a href="#asks">What it asks for</a>
+    <a href="#script">The script</a>
+    <a href="#branding">Branding</a>
+    <a href="#access">Accessibility</a>
+    <a href="#changing">Changing it</a>
+    <a href="#limits">Known limits</a>
+  </nav>
+</details>
+
+<main class="doc">
+  <section>
+    <h1>How this site is built</h1>
+    <p>This site is two plain HTML pages, one stylesheet and one script, served by the same Cloudflare Worker as the relay. There is no build step, no framework and no package to install. What is in <code>site/</code> is what you are reading.</p>
+    <p class="note">This is for someone changing the site. What Toto is, and how to use it, is in <a href="/docs">the documentation</a>.</p>
+  </section>
+
+  <section aria-labelledby="files">
+    <h2 id="files">What is in it</h2>
+    <div class="scroll">
+      <table>
+        <tr><th>File</th><th>What it is</th></tr>
+        <tr><td><code>index.html</code></td><td>The home page: what Toto is, the live count, the download, four steps to get going.</td></tr>
+        <tr><td><code>docs.html</code></td><td>The documentation, as one page of sections with a contents list down the side.</td></tr>
+        <tr><td><code>architecture.html</code></td><td>This page.</td></tr>
+        <tr><td><code>toto.css</code></td><td>All of the styling, for every page.</td></tr>
+        <tr><td><code>toto.js</code></td><td>Everything that moves or asks for data. One file, no imports, loaded at the end of each page.</td></tr>
+      </table>
+    </div>
+    <p>The pages are served at <code>/</code>, <code>/docs</code> and <code>/architecture</code>. The <code>.html</code> is not part of the address.</p>
+  </section>
+
+  <section aria-labelledby="served">
+    <h2 id="served">How it is served</h2>
+    <pre class="block">browser ──► toto.royletron.dev ──► Cloudflare Worker
+                                     │
+                                     ├─ a file in site/ ........ served as it is
+                                     ├─ /stats .................. how many Totos are online
+                                     ├─ /release ................ the latest release, from GitHub
+                                     ├─ /announce (POST) ........ release workflow only
+                                     └─ /v1/&lt;id&gt; (WebSocket) .... the relay itself</pre>
+    <p>The Worker's configuration points its <code>assets</code> at the <code>site</code> folder. A request that matches a file there is answered without running any code. Only <code>/v1/*</code>, <code>/stats</code>, <code>/announce</code> and <code>/release</code> are listed under <code>run_worker_first</code>, so those reach the Worker and everything else is a file or a 404. A new route for a page to call has to be added to that list as well as to the Worker.</p>
+    <p>The site and the relay are one thing to deploy. <code>npx wrangler deploy</code> from <code>relay/</code> publishes both.</p>
+  </section>
+
+  <section aria-labelledby="asks">
+    <h2 id="asks">What it asks for</h2>
+    <p>The site is static, apart from two small questions it puts to the Worker.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Used for</th><th>Route</th><th>Answer</th><th>Kept for</th></tr>
+        <tr><td>The live count on the home page</td><td><code>/stats</code></td><td>The number online, from a Durable Object that holds opaque device ids and the time each was last heard of. A device counts for 30 minutes after it was last heard from.</td><td>The page asks every 15 seconds. The answer may be cached for 10.</td></tr>
+        <tr><td>The download button and the Android link</td><td><code>/release</code></td><td>The latest version, and the image and the Android app if they are in the release yet. The Worker reads GitHub's release files because a page cannot ask GitHub directly.</td><td>5 minutes</td></tr>
+      </table>
+    </div>
+    <p>Both fail quietly. If <code>/release</code> does not answer, the button keeps its plain text and links to the releases page on GitHub. If <code>/stats</code> does not answer, the count says so and the mark goes to its offline face. Neither is a reason for a page to look broken.</p>
+    <p>The download button links straight to GitHub. The Worker never serves a release.</p>
+  </section>
+
+  <section aria-labelledby="script">
+    <h2 id="script">The script</h2>
+    <p><code>toto.js</code> is four independent pieces. Each does nothing if the element it works on is not on the page, which is how one file serves every page.</p>
+    <ul>
+      <li><b>The mark.</b> Any element with <code>data-face</code> is drawn as text and moved by swapping its characters. See <a href="#branding">Branding</a>.</li>
+      <li><b>The contents list.</b> Open down the side on a screen wider than 900px and folded into a menu on a narrower one. It marks the section being read: a section counts as read while its heading is in the top third of the screen.</li>
+      <li><b>The release.</b> Fills in the version and the image's size on the button, and the Android link.</li>
+      <li><b>The live count.</b> Asks <code>/stats</code> and sets the mark's mood: awake when any Toto is online, resting when none is, offline when the relay did not answer.</li>
+    </ul>
+    <p>The landscape behind the page is drawn in the same file.</p>
+  </section>
+
+  <section aria-labelledby="branding">
+    <h2 id="branding">Branding</h2>
+    <p>The site is the same world as the app: an unlit screen, one monospace face, amber for whatever is yours or is waiting on you. Dark only, and terminal-styled. Change any of it in the stylesheet and the app's theme together.</p>
+    <h3>Colour</h3>
+    <p>Each is a custom property at the top of <code>toto.css</code>. Use the name, not the value.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Name</th><th>Value</th><th>Used for</th></tr>
+        <tr><td><code>--tube</code></td><td>#11140f</td><td>The page. Also text on amber.</td></tr>
+        <tr><td><code>--bezel</code></td><td>#1d2119</td><td>Raised surfaces: code blocks, the status line, the contents list on a narrow screen.</td></tr>
+        <tr><td><code>--rule</code></td><td>#30362a</td><td>Every line and border.</td></tr>
+        <tr><td><code>--phosphor</code></td><td>#ece6d2</td><td>Text.</td></tr>
+        <tr><td><code>--ghost</code></td><td>#959b85</td><td>Secondary text, and things that are off.</td></tr>
+        <tr><td><code>--amber</code></td><td>#ffb000</td><td>What is yours, or waiting on you: the one thing to act on, the <code>❯</code> marker, code, the underscore in the name.</td></tr>
+        <tr><td><code>--signal</code></td><td>#8bd45f</td><td>An agent at work, a healthy link. Not used on the site yet.</td></tr>
+        <tr><td><code>--raspberry</code></td><td>#f25c82</td><td>Errors, deny, delete. Not used on the site yet.</td></tr>
+        <tr><td><code>--sky</code></td><td>#7fc8e8</td><td>Links, and nothing else.</td></tr>
+      </table>
+    </div>
+    <p>Amber is scarce on purpose. If a page has more than one or two places in amber, one of them is wrong. The landscape uses its own muted greens, which sit just above the page and are never brighter than the secondary text.</p>
+    <h3>Type</h3>
+    <p>One face: IBM Plex Mono, weights 400, 500 and 700, from Google Fonts, falling back to the system monospace. There is no second family. Body is 15px on a 1.6 line height; headings are bold, tight and balanced. Hierarchy comes from weight, size and the secondary colour, not from colour alone.</p>
+    <h3>Layout</h3>
+    <p>One left-aligned column, set like a terminal session, at most 1000px wide. Text is held to 64 characters a line. Sections are separated by a rule and space, not by boxes. Documentation pages add a 200px list of sections beside a 760px column.</p>
+    <h3>The mark</h3>
+    <p>A dog's face in six characters, <code>/o o\</code> over a bullet nose. It is text, not an image, and it moves by swapping characters rather than by animating anything.</p>
+    <ul>
+      <li>It has a mood per state. <b>Awake</b> blinks and glances. <b>Resting</b> closes its eyes and sleeps. <b>Looking</b> glances about, and is what the live count shows until the relay answers. <b>Offline</b> is still, in the secondary colour. Looking and offline have no nose. <b>Waiting</b> is amber.</li>
+      <li>Give it a <code>role="img"</code> and an <code>aria-label</code> that describes it, or <code>aria-hidden="true"</code> when it sits beside text that says the same thing.</li>
+      <li>The frames are in <code>toto.js</code> and match the app and the device's own console. Change one and change all three.</li>
+    </ul>
+    <p>The name is written <code>toto_</code>, lower case, with the underscore in amber. It is a cursor. In running text the product is "Toto", and "a Toto" is one device.</p>
+    <h3>Voice</h3>
+    <ul>
+      <li><b>Plain and specific.</b> Say what happens, to whom, and what it costs. "Nothing is installed until you tap Update", not "seamless updates".</li>
+      <li><b>Honest about being early.</b> Where something is missing or unproven the page says so, and the known limits are listed, not buried.</li>
+      <li><b>Second person, present tense.</b> You and your Toto, your phone, your house.</li>
+      <li><b>No hype and no em dashes.</b> Commas, colons and full stops.</li>
+      <li><b>Buttons and menu items are named as the app names them,</b> in bold: <b>Find a new Toto nearby</b>, <b>Sign in with Claude</b>.</li>
+      <li>Use a non-breaking hyphen in "Wi&#8209;Fi" so it does not split across a line.</li>
+    </ul>
+    <h3>The landscape</h3>
+    <p>Three ridges of hills drawn in characters on a fixed canvas behind the page, drifting past at different speeds under a few stars. Each ridge is a sum of sines with random phases, so every visit has its own. It is decoration, and it stays that way: hidden from assistive technology, unable to take a click, behind everything, drawn only once the font has loaded, stopped while the tab is hidden, and still when the visitor has asked for reduced motion. The mark is still then as well.</p>
+  </section>
+
+  <section aria-labelledby="access">
+    <h2 id="access">Accessibility</h2>
+    <ul>
+      <li>Text is the text colour or the secondary colour on the page or a raised surface. Keep to those pairings, and check any new one.</li>
+      <li>Every section has a heading with an <code>id</code>, and its section is labelled by it.</li>
+      <li>Focus is shown as a 2px amber outline.</li>
+      <li>Pictures made of text, such as the mark and the app's conversation on the home page, are marked as images with a description of what they show.</li>
+      <li>The live count is in a polite live region.</li>
+      <li>The contents list is a <code>details</code> element, so it works as a menu with no script, and with script it follows the screen's width.</li>
+      <li>Motion is off under <code>prefers-reduced-motion</code>.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="changing">
+    <h2 id="changing">Changing it</h2>
+    <dl class="parts">
+      <dt>Add a documentation section</dt>
+      <dd class="dim">Add a section labelled by an <code>h2</code> with an <code>id</code>, and a link to it in the contents list. The script marks the section being read from the headings' ids, so nothing else is needed.</dd>
+      <dt>Add a page</dt>
+      <dd class="dim">Add <code>site/&lt;name&gt;.html</code> with the same head, header and footer as this one and link it from the header. It is served at <code>/&lt;name&gt;</code>. For a contents list, copy this page's structure: <code>.with-side</code> and <code>.doc</code> are what the script and stylesheet look for.</dd>
+      <dt>Add something that asks the Worker</dt>
+      <dd class="dim">Add the route to the Worker and to <code>run_worker_first</code>, give the answer a <code>cache-control</code> so every visitor does not reach it, and make the page work when it does not answer.</dd>
+      <dt>Change the colours or the face</dt>
+      <dd class="dim">Do it in <code>:root</code> in <code>toto.css</code>, then in the app's <code>theme.ts</code>, so the two stay one world.</dd>
+      <dt>Try it</dt>
+      <dd class="dim">There is nothing to build. Run <code>npm run dev</code> in <code>relay/</code> to serve the site and the Worker together on <code>localhost:8787</code>. Opening the files directly works for the layout, but the count and the download will not answer.</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">Known limits</h2>
+    <ul>
+      <li><b>The font comes from Google Fonts.</b> A visitor's browser asks Google for it. Serving it from the site itself would remove that, and is not done yet.</li>
+      <li><b>No light theme.</b> The site is dark only, as the app is.</li>
+      <li><b>The landscape redraws a canvas every 220ms.</b> It is cheap, but not free on a very old phone. Reduced motion turns it off, and there is no other switch.</li>
+      <li><b>One script for every page.</b> Fine while it is small. If it grows a piece only one page needs, split it.</li>
+      <li><b>The site and the relay deploy together.</b> A mistake in one blocks the other, and they share an address. The relay has no usage limits yet.</li>
+    </ul>
+  </section>
+</main>
+</div>
+
+<footer>
+  <span>toto<span class="amber">_</span></span>
+  <a href="/">Home</a>
+  <a href="/docs">Documentation</a>
+  <a href="https://github.com/stellar-engineering/toto">GitHub</a>
+</footer>
+
+<script src="/toto.js"></script>
+</body>
+</html>
