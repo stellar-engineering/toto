@@ -55,6 +55,11 @@ test('works out keystrokes from how a text field changed', { skip }, () => {
   assert.deepEqual(typed('abc', 'abc'), { backspaces: 0, text: '' });
 });
 
+test("the app's copy of moods.ts is identical to the server's", { skip }, async () => {
+  const { readFileSync } = await import('node:fs');
+  assert.equal(readFileSync(new URL('../../app/src/moods.ts', import.meta.url), 'utf8'), readFileSync(new URL('./moods.ts', import.meta.url), 'utf8'));
+});
+
 const moods = new URL('../../app/src/moods.ts', import.meta.url);
 const { FRAMES, compact, moodOf, moodOfMany } = skip ? ({} as any) : await import(moods.href);
 

@@ -36,17 +36,22 @@ type Options = {
   handle: (request: SetupRequest) => Promise<SetupReply>;
 };
 
+export type Bluetooth = {
+  /** Starts or stops advertising, which is what lets a phone find this device. */
+  show: (visible: boolean) => Promise<void>;
+};
+
 /**
- * Starts offering the setup service. Resolves to whether it is being advertised; a machine with
- * no Bluetooth is not an error, it just cannot be set up this way.
+ * Sets up the Bluetooth service, without advertising it yet. Resolves to undefined on a machine
+ * with no Bluetooth, which is not an error: it just cannot be set up this way.
  */
-export async function startBluetooth({ info, psk, handle }: Options): Promise<boolean> {
+export async function startBluetooth({ info, psk, handle }: Options): Promise<Bluetooth | undefined> {
   let bus: dbus.MessageBus;
   try {
     bus = dbus.systemBus();
     bus.on('error', () => {});
   } catch {
-    return false;
+    return undefined;
   }
 
   // One conversation per phone. A phone that starts again simply replaces its old one.
@@ -182,12 +187,23 @@ export async function startBluetooth({ info, psk, handle }: Options): Promise<bo
     const bluez = await bus.getProxyObject('org.bluez', ADAPTER);
     await bluez.getInterface('org.freedesktop.DBus.Properties').Set('org.bluez.Adapter1', 'Powered', v('b', true));
     await bluez.getInterface('org.bluez.GattManager1').RegisterApplication(ROOT, {});
-    await bluez.getInterface('org.bluez.LEAdvertisingManager1').RegisterAdvertisement(`${ROOT}/adv`, {});
-    return true;
+    const adverts = bluez.getInterface('org.bluez.LEAdvertisingManager1');
+    let shown = false;
+    let changing = Promise.resolve();
+    return {
+      // One change at a time, so on-then-off in quick succession ends up off.
+      show: (visible) =>
+        (changing = changing.then(async () => {
+          if (visible === shown) return;
+          if (visible) await adverts.RegisterAdvertisement(`${ROOT}/adv`, {});
+          else await adverts.UnregisterAdvertisement(`${ROOT}/adv`);
+          shown = visible;
+        }).catch((err) => console.error(`bluetooth: ${(err as Error).message}`))),
+    };
   } catch (err) {
     // No adapter, Bluetooth switched off, or no BlueZ at all.
     console.log(`bluetooth setup unavailable: ${(err as Error).message}`);
     bus.disconnect();
-    return false;
+    return undefined;
   }
 }

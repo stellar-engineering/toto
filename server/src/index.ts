@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
@@ -393,17 +395,37 @@ function dialRelay() {
 if (relayUrl) dialRelay();
 
 // --- Bluetooth: how a phone sets this device up before it can be reached any other way.
-const lanAddress = () => {
+//
+// A phone can only find this device while it is advertising, and it advertises only when there
+// is a reason to: it has no owner yet, someone at the device has opened pairing mode, or it has
+// lost its network and its owner needs a way back in.
+const lanIp = () => {
   for (const addresses of Object.values(networkInterfaces()))
-    for (const a of addresses ?? []) if (a.family === 'IPv4' && !a.internal) return `ws://${a.address}:${port}`;
-  return `ws://${hostname()}.local:${port}`;
+    for (const a of addresses ?? []) if (a.family === 'IPv4' && !a.internal) return a.address;
+  return undefined;
 };
+const lanAddress = () => `ws://${lanIp() ?? `${hostname()}.local`}:${port}`;
+
+// Pairing mode, opened by hand at the device: for a while, a new phone may claim it as if it had no owner.
+let pairingUntil = 0;
+const pairing = () => Date.now() < pairingUntil;
+const openToClaim = () => !state.claimed || pairing();
+
 // What the device says about itself is read without any waiting, so the network it is on is looked up ahead of time.
 let wifiNow: string | null = null;
-const refreshWifi = () => wifiList().then((w) => (wifiNow = w.current)).catch(() => {});
+let offlineSince: number | undefined;
+let bluetooth: Awaited<ReturnType<typeof startBluetooth>>;
+const visible = () => openToClaim() || (offlineSince !== undefined && Date.now() - offlineSince > 60_000);
+const look = async () => {
+  await wifiList().then((w) => (wifiNow = w.current)).catch(() => {});
+  offlineSince = lanIp() ? undefined : (offlineSince ?? Date.now());
+  await bluetooth?.show(visible());
+};
+
 startBluetooth({
   psk,
-  info: () => ({ id: deviceId, name: state.name, claimed: state.claimed, wifi: wifiNow }),
+  // "Has an owner" is what makes the phone need the token, so pairing mode reports it as having none.
+  info: () => ({ id: deviceId, name: state.name, claimed: !openToClaim(), wifi: wifiNow }),
   handle: async (request) => {
     switch (request?.type) {
       case 'networks': {
@@ -418,28 +440,78 @@ startBluetooth({
         } catch (err) {
           return { type: 'joined', ok: false, problem: (err as Error).message };
         } finally {
-          await refreshWifi();
+          await look();
         }
         return { type: 'joined', ok: true };
       }
       case 'claim':
         // Reaching here means the conversation's key was right: for a device with an owner,
-        // that took its token. Handing the token over is what makes the first phone the owner.
-        if (!state.claimed) {
-          state.claimed = true;
-          save();
-        }
+        // that took its token. Handing the token over is what makes a phone an owner, and
+        // once that has happened there is nothing left to advertise for.
+        state.claimed = true;
+        pairingUntil = 0;
+        save();
+        setTimeout(look, 2_000); // after the answer has gone out
         return { type: 'claimed', name: state.name, address: lanAddress(), token, relay: relayUrl ?? '' };
       default:
         return { type: 'refused', problem: 'Not something this device understands.' };
     }
   },
-}).then((on) => {
-  if (!on) return;
-  console.log('bluetooth: offering setup');
-  refreshWifi();
-  setInterval(refreshWifi, 60_000).unref();
+}).then((ready) => {
+  bluetooth = ready;
+  if (!ready) return;
+  look().then(() => console.log(`bluetooth: ${visible() ? 'offering setup' : 'ready, not advertising'}`));
+  setInterval(look, 20_000).unref();
 });
+
+// --- The device's own console tool (`toto`) talks to us here: one JSON request per line, one
+// JSON answer back. The socket's permissions are the access control: this user and root only.
+const control = join(process.env.RUNTIME_DIRECTORY ?? dataDir, 'ctl.sock');
+rmSync(control, { force: true });
+createServer((socket) => {
+  socket.on('error', () => {});
+  const lines = createInterface({ input: socket });
+  lines.on('error', () => {});
+  lines.on('line', async (line) => {
+    let request: { cmd?: string; minutes?: number; name?: string };
+    try {
+      request = JSON.parse(line);
+    } catch {
+      return socket.end();
+    }
+    if (request.cmd === 'pair') {
+      pairingUntil = Date.now() + Math.min(Math.max(Number(request.minutes) || 10, 1), 60) * 60_000;
+      await look();
+    }
+    if (request.cmd === 'stop-pairing') {
+      pairingUntil = 0;
+      await look();
+    }
+    if (request.cmd === 'rename' && isName(request.name)) {
+      state.name = request.name.trim();
+      commit();
+    }
+    const activities = state.agents.filter((a) => a.harness === 'claude').map((a) => logs.get(a.id) ?? []);
+    const waiting = activities.filter((log) => openApprovals(log).length > 0).length;
+    socket.write(
+      JSON.stringify({
+        name: state.name,
+        claimed: state.claimed,
+        pairingSeconds: Math.max(0, Math.round((pairingUntil - Date.now()) / 1000)),
+        advertising: !!bluetooth && visible(),
+        bluetooth: !!bluetooth,
+        wifi: wifiNow,
+        ip: lanIp() ?? null,
+        relay: relayUrl ?? null,
+        phones: clients.size,
+        projects: state.projects.length,
+        agents: state.agents.length,
+        running: running.size,
+        waiting,
+      }) + '\n',
+    );
+  });
+}).listen(control, () => chmodSync(control, 0o660));
 
 wss.on('listening', () => {
   console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);

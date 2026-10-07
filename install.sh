@@ -28,6 +28,10 @@ cp -r "$src/server" "$src/protocol.ts" /opt/toto/
 rm -rf /opt/toto/server/node_modules
 (cd /opt/toto/server && npm install --omit=dev --no-audit --no-fund)
 
+# The device's own tool: `sudo toto` for a live screen, `sudo toto pair` and so on.
+printf '#!/bin/sh\nexec /usr/bin/node /opt/toto/server/src/cli.ts "$@"\n' > /usr/local/bin/toto
+chmod 755 /usr/local/bin/toto
+
 # toto may manage project users through the helper, and run commands as project users. Nothing else.
 sudoers="$(mktemp)"
 cat > "$sudoers" <<'EOF'
@@ -58,6 +62,9 @@ WorkingDirectory=/opt/toto/server
 EnvironmentFile=/etc/toto.env
 ExecStart=/usr/bin/node src/index.ts
 Restart=on-failure
+# /run/toto, where the socket for the `toto` console tool lives.
+RuntimeDirectory=toto
+RuntimeDirectoryMode=0750
 # Leave terminal agents' tmux sessions running when the server restarts.
 KillMode=process
 

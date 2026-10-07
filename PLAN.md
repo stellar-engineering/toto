@@ -1,6 +1,6 @@
 # Toto: Plan
 
-What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is built, and what is left. Last updated 2026-10-07.
+What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is built, and what is left. Last updated 2026-10-07 (after the first Pi install).
 
 ## Where things stand
 
@@ -9,7 +9,7 @@ What Toto is lives in [SPEC.md](SPEC.md). This is what has been decided, what is
 | M0: Walking skeleton | Done |
 | M1: Projects and agents | Done, except the Codex and Gemini chat adapters (deferred) |
 | M3: Remote access | Done on Android. iOS push is waiting on an Apple developer account |
-| M2: Onboarding | Not started |
+| M2: Onboarding | Bluetooth setup done and run on a Pi 4. Image, pairing mode and local tools in progress |
 | M4: Consumer readiness | Local-network firewall done; the rest not started |
 | M5: Web and launch | Not started |
 
@@ -21,11 +21,12 @@ M3 was done before M2 because a working box already existed and reaching it from
 |---|---|
 | Audience | Consumer product, open source, free for now |
 | Distribution | User flashes a downloadable image (aim for a Raspberry Pi Imager listing) |
-| Hardware | Pi 4 and Pi 5, 4GB+. Developed so far on a Debian 13 x86 machine |
+| Hardware | Pi 4 and Pi 5, 4GB+. Developed on a Debian 13 x86 machine; first run on a Pi 4 (4GB) on 2026-10-07 |
 | Harnesses | Claude Code as a chat today. Codex CLI and Gemini CLI later; both usable now by hand in a terminal agent |
 | Interaction | Native chat per harness, with terminal agents as the fallback |
 | Clients | One Expo app. Mobile first; web build from the same code later |
-| Onboarding | Bluetooth from the mobile app: Wi-Fi credentials plus key exchange. Until then, an address and a shared token typed in once |
+| Onboarding | Bluetooth from the mobile app: the phone finds a new Toto, puts it on Wi-Fi and collects its keys. Typing an address and token remains as a fallback |
+| Pairing mode | A Toto advertises over Bluetooth only until it has an owner. After that, pairing mode is turned on by hand at the device, or by itself if the device loses its network |
 | Identity | Pairing only, no accounts |
 | Remote access | Hosted Cloudflare relay at `toto.royletron.dev`, same code self-hostable |
 | Privacy | Every connection is end-to-end encrypted, on the local network and through the relay |
@@ -38,6 +39,7 @@ M3 was done before M2 because a working box already existed and reaching it from
 | Push | Sent by the device through Expo's push service, with fixed text and no content |
 | Server | TypeScript on Node 24, run directly with no build step |
 | Design | Terminal-styled: one monospace face, dark only, amber for the user and for agents waiting on them |
+| Mark | A dog in six characters, `/o o\\` over a bullet nose, animated by swapping characters, with a mood per state. Shown throughout the app and on the device's own console |
 | App identity | `com.stellar.toto`, Expo project `@stellar-engineering/toto` |
 
 ## How it is built
@@ -61,12 +63,13 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 ## What is left
 
 ### M2: Onboarding
-- Flashable image for the Pi (pi-gen), and a test on real Pi hardware, which has not happened yet.
-- Bluetooth provisioning: Wi-Fi credentials and a key exchange, replacing the typed address and token.
+- Done: Bluetooth setup. The device offers a Bluetooth service through BlueZ; phone and device exchange keys and the phone lists and joins Wi-Fi and collects the device's keys. Run end to end on a Pixel against a Pi 4, except for joining a network.
+- Flashable image: the smallest official Raspberry Pi OS with Toto already installed, a token made on first boot, and a console screen in place of a login.
+- A local tool on the device (`toto`): status with the mark alive, pairing mode, Wi-Fi and rename.
 - Per-device keys from pairing. This also gives the relay path forward secrecy, which the shared token does not.
 - Adding further devices by scanning a code from a paired phone.
 - Finding the device on the local network by itself (mDNS).
-- In-app sign-in for model providers, replacing hand-editing `/etc/toto.env`.
+- In-app sign-in for Claude, replacing hand-editing `/etc/toto.env`. Other providers follow with their adapters.
 - Check each provider's terms on using a consumer subscription from a third-party harness before offering it to customers.
 
 ### M3: leftovers
@@ -82,11 +85,13 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 - Codex and Gemini chat adapters. Full auto is straightforward for both; asking for approval needs each tool's richer host mode (`codex app-server`, Gemini's ACP), which is unproven.
 
 ### M5: Web and launch
+- A site that says what Toto is, with documentation and a live count of Totos online.
 - Web build of the app, paired by scanning a code.
 - Pi Imager listing, app store releases, public repository.
 
 ## Known limits
 
+- **First setup trusts whoever is nearby.** Until a Toto has an owner, any phone in Bluetooth range can claim it; a Pi has no screen to confirm on.
 - **One shared token.** Anyone holding it has full control, and recorded traffic could be decrypted later by someone who obtained it. Fixed by M2 pairing.
 - **Loopback is open to agents.** The firewall keeps agents off the local network but cannot separate their own `127.0.0.1` from services on the device listening there. Closing that needs a network namespace per project.
 - **One SSH key for everything.** Added to a git account, it gives every project's agents every repository that account can reach. Per-repository deploy keys would be tighter.
