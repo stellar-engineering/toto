@@ -14,6 +14,7 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   apt-get install -y nodejs
 fi
 # nftables for the nft tool only: its service, which would replace the whole firewall, is left off.
+apt-get update
 apt-get install -y git sudo openssh-client tmux nftables bluez rfkill network-manager
 command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
 # A headless browser for agents: Chromium from the distribution, driven by Playwright's MCP server,
