@@ -339,6 +339,9 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (agent.mode === 'auto')
         for (const id of openApprovals(logs.get(agent.id)!)) running.get(agent.id)?.resolve(id, true);
       return;
+    default:
+      // An app newer than this server asking for something added since. Say so: silence leaves it waiting for ever.
+      throw new Error('This Toto does not know how to do that yet. It needs updating.');
   }
 }
 

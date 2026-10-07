@@ -17,7 +17,16 @@ case "${1:-}" in
     ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.
-    exec nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan auto
+    list() { nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan "$1"; }
+    found="$(list auto)"
+    # A radio that has only just come up has not looked yet, and says there is nothing. Make it look.
+    for _ in 1 2 3; do
+      [ -n "$found" ] && break
+      nmcli device wifi rescan >/dev/null 2>&1 || true
+      sleep 3
+      found="$(list no)"
+    done
+    printf '%s\n' "$found"
     ;;
   wifi-join)
     # The network's name is the argument; its password, if it has one, arrives on stdin so that
