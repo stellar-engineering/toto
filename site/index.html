@@ -84,6 +84,48 @@
     </dl>
   </section>
 
+  <section aria-labelledby="how">
+    <h2 id="how">How it fits together</h2>
+    <figure class="map">
+      <div class="grid">
+        <div class="node phone">
+          <h3>Your phone</h3>
+          <p class="dim">The app. Finds a new Toto over Bluetooth, starts agents, reads what they say, and answers when they ask.</p>
+        </div>
+        <div class="lane direct" aria-hidden="true"><span>At home: straight across, no relay</span></div>
+        <div class="lane" aria-hidden="true"><span>Away</span></div>
+        <div class="node relay">
+          <h3>The relay</h3>
+          <p class="dim">A Cloudflare Worker. Passes sealed messages between the two. Cannot read them.</p>
+        </div>
+        <div class="lane" aria-hidden="true"><span>One line out from home</span></div>
+        <div class="node box">
+          <h3>Your Toto</h3>
+          <ul class="inside">
+            <li><b>The server.</b> Listens on your network and holds the line out to the relay. Not root.</li>
+            <li><b>A small helper.</b> The only part that is root, for five jobs: make or remove a project's user, open or close the home network to it, list or join Wi&#8209;Fi, and start an update.</li>
+            <li><b>Projects.</b> A git repository each, with a Linux user of its own and a firewall keeping it off your home network. The agents run in here: Claude Code as a chat, or a terminal for anything else.</li>
+          </ul>
+        </div>
+      </div>
+      <figcaption class="dim">Every line is sealed between your phone and your Toto, at home and through the relay alike. The relay is only for when you are out.</figcaption>
+    </figure>
+    <dl class="parts points">
+      <div>
+        <dt>Setting up</dt>
+        <dd class="dim">Bluetooth, from the app, until the Toto has an owner. It puts the Toto on your Wi&#8209;Fi and collects its keys.</dd>
+      </div>
+      <div>
+        <dt>Telling you</dt>
+        <dd class="dim">When an agent stops to ask, the Toto has your phone notified through Expo's push service. The notification carries no content.</dd>
+      </div>
+      <div>
+        <dt>Updating</dt>
+        <dd class="dim">From signed releases on GitHub, checked on the Toto before anything is installed. The relay only says &ldquo;look now&rdquo;.</dd>
+      </div>
+    </dl>
+  </section>
+
   <section aria-labelledby="start">
     <h2 id="start">Getting one going</h2>
     <a class="get" data-release href="https://github.com/stellar-engineering/toto/releases/latest">
