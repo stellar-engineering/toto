@@ -7,6 +7,7 @@ import { startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
 import { readFrame } from './terminal.ts';
+import { deadTokens, isPushToken, pushMessage } from './push.ts';
 
 test('maps claude stream-json onto common events', () => {
   assert.deepEqual(
@@ -95,4 +96,19 @@ test('credentials survive the trip through a shell file, whatever they contain',
   // Source it the way agents do, and read the value back.
   const got = execFileSync('sh', ['-c', `${file} printf %s "$ANTHROPIC_API_KEY"`]).toString();
   assert.equal(got, nasty);
+});
+
+test('push: says nothing about the work, and forgets phones that have gone', () => {
+  const message = pushMessage(['ExponentPushToken[a]'], 'approval', 'ab12cd34');
+  assert.deepEqual(message.data, { agentId: 'ab12cd34' });
+  assert.equal(message.body, 'An agent is waiting for your go-ahead.');
+  assert.equal(message.priority, 'high');
+  assert.equal(pushMessage([], 'done', 'x').priority, 'default');
+
+  assert.ok(isPushToken('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]') && isPushToken('ExpoPushToken[a-b_c]'));
+  assert.ok(!isPushToken('ExponentPushToken[]') && !isPushToken('https://evil.example') && !isPushToken(7));
+
+  const answer = { data: [{ status: 'ok', id: '1' }, { status: 'error', details: { error: 'DeviceNotRegistered' } }, { status: 'error', details: { error: 'MessageRateExceeded' } }] };
+  assert.deepEqual(deadTokens(['a', 'b', 'c'], answer), ['b']);
+  assert.deepEqual(deadTokens(['a'], { errors: [{ code: 'X' }] }), []);
 });

@@ -6,6 +6,7 @@ import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { type Screen, isTermKey, killTerminal, openTerminal, sendToTerminal, watchTerminal } from './terminal.ts';
 import { startClaude } from './claude.ts';
+import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
   addWorktree,
@@ -38,9 +39,10 @@ type AgentRecord = Agent & { cwd: string; sessionId?: string };
 const logDir = join(dataDir, 'logs');
 mkdirSync(logDir, { recursive: true });
 const stateFile = join(dataDir, 'state.json');
-const state: { projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity } = {
+const state: { projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
   projects: [],
   agents: [],
+  pushTokens: [],
   // A placeholder so commits never fail for want of an author; the app asks for the real one.
   identity: { name: 'Toto', email: `toto@${hostname()}` },
   ...(existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {}),
@@ -69,7 +71,7 @@ for (const p of state.projects) {
   p.lan ??= false;
   await setLan(p.user, p.lan).catch((err) => console.error(`FIREWALL NOT APPLIED for ${p.name}: ${err.message}`));
 }
-const snapshot = (): ServerMessage => ({ type: 'state', ...state, sshKey });
+const snapshot = (): ServerMessage => ({ type: 'state', projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
@@ -82,19 +84,35 @@ const broadcast = (msg: ServerMessage) => {
   for (const client of clients) send(client, msg);
 };
 
-/** Persists projects and agents, then tells every client. */
-const commit = () => {
+const save = () => {
   writeFileSync(stateFile + '.tmp', JSON.stringify(state, null, 2));
   renameSync(stateFile + '.tmp', stateFile); // atomic, so a crash mid-write cannot corrupt it
+};
+
+/** Persists projects and agents, then tells every client. */
+const commit = () => {
+  save();
   broadcast(snapshot());
 };
+
+/** Tells every registered phone, and forgets any that have since uninstalled. */
+const notify = (kind: PushKind, agent: AgentRecord) =>
+  void push(state.pushTokens, kind, agent.id).then((dead) => {
+    if (!dead.length) return;
+    state.pushTokens = state.pushTokens.filter((t) => !dead.includes(t));
+    save();
+  });
 
 const emit = (agent: AgentRecord, event: AgentEvent) => {
   if (!logs.has(agent.id)) return; // deleted while its process was still winding down
   logs.get(agent.id)!.push(event);
   appendFileSync(logFile(agent.id), JSON.stringify(event) + '\n');
   broadcast({ type: 'event', agentId: agent.id, event });
-  if (event.type === 'approval_request' && agent.mode === 'auto') running.get(agent.id)?.resolve(event.id, true);
+  if (event.type === 'approval_request') {
+    if (agent.mode === 'auto') running.get(agent.id)?.resolve(event.id, true);
+    else notify('approval', agent);
+  }
+  if (event.type === 'done') notify('done', agent);
 };
 
 // Approvals left open by a previous run have nobody to answer to any more.
@@ -150,6 +168,11 @@ async function handle(msg: ClientMessage, ws: Client) {
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
       return send(ws, { type: 'synced' });
+    case 'register_push':
+      if (!isPushToken(msg.token) || state.pushTokens.includes(msg.token)) return;
+      // The newest few: a phone gets a fresh token now and then, and old ones would otherwise pile up.
+      state.pushTokens = [...state.pushTokens, msg.token].slice(-10);
+      return save();
     case 'create_project': {
       if (!isName(msg.name) || typeof msg.repo !== 'string') throw new Error('A project needs a name and a repository.');
       const id = newId();

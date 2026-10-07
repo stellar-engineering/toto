@@ -52,6 +52,8 @@ export type ServerMessage =
 export type ClientMessage =
   // First message of a connection: asks for the state and every agent's history.
   | { type: 'sync' }
+  // This phone's push token, so the device can tell it when an agent needs attention.
+  | { type: 'register_push'; token: string }
   | { type: 'set_identity'; name: string; email: string }
   | { type: 'create_project'; name: string; repo: string }
   | { type: 'set_lan'; projectId: string; allow: boolean }

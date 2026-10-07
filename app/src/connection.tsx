@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
+import { pushToken } from './push';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure';
 
 export type { Agent, AgentEvent, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
@@ -123,6 +124,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         break;
       case 'synced':
         caughtUp.current = true;
+        // Now that we are talking to our Toto, tell it how to reach this phone when the app is closed.
+        pushToken().then((token) => token && post({ type: 'register_push', token }));
         break;
       case 'term':
         setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));

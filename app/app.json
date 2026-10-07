@@ -1,13 +1,14 @@
 {
   "expo": {
     "name": "Toto",
-    "slug": "app",
+    "slug": "toto",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stellar.toto"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +17,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.stellar.toto",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -25,9 +28,23 @@
       "expo-router",
       "expo-status-bar",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#FFB000",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "scheme": "toto",
-    "backgroundColor": "#11140F"
+    "backgroundColor": "#11140F",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "af5cfc62-0414-41b1-8387-237d23899ede"
+      }
+    },
+    "owner": "stellar-engineering"
   }
 }

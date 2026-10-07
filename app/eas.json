@@ -1,0 +1,11 @@
+{
+  "cli": {
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "distribution": "internal"
+    },
+    "production": {}
+  }
+}

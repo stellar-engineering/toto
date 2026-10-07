@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "272118601086",
+    "project_id": "toto-86821",
+    "storage_bucket": "toto-86821.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:272118601086:android:299ab6f652afb4f4918f2f",
+        "android_client_info": {
+          "package_name": "com.stellar.toto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAQWe7PMOC0C6R8XOCzwbZW7ZGHaDY6Lk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

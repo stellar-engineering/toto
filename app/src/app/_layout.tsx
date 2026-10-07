@@ -1,10 +1,11 @@
 import { IBMPlexMono_400Regular, IBMPlexMono_400Regular_Italic, IBMPlexMono_500Medium, IBMPlexMono_700Bold } from '@expo-google-fonts/ibm-plex-mono';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
+import { useTappedAgent } from '../push';
 import { color, font, gutter, size } from '../theme';
 import { Btn, Field, Screen, Txt } from '../ui';
 
@@ -35,6 +36,20 @@ function Setup() {
 
 function Root() {
   const { status } = useConnection();
+  const router = useRouter();
+  const ready = status === 'open' || status === 'reconnecting';
+
+  // Tapping a notification opens the conversation it was about, once there are screens to open it on.
+  const tapped = useTappedAgent();
+  const opened = useRef<string>(undefined);
+  useEffect(() => {
+    if (!ready || !tapped || opened.current === tapped) return;
+    opened.current = tapped;
+    // After this render, so the navigator that `ready` has just mounted exists.
+    const timer = setTimeout(() => router.push({ pathname: '/agent/[id]', params: { id: tapped } }), 0);
+    return () => clearTimeout(timer);
+  }, [ready, tapped, router]);
+
   if (status === 'setup' || status === 'connecting') return <Setup />;
   // Open or reconnecting: keep every screen where it was, so a dropped connection costs nothing but a moment.
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube } }} />;
