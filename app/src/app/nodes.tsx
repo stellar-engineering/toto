@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Node } from '../connection';
@@ -67,7 +67,9 @@ export default function Nodes() {
 
   return (
     <Screen bare>
-      <Header parent={current?.name} title="totos" />
+      {/* The top of the hierarchy, so it has nothing above it to show, and arrives from the left as going up a level should. */}
+      <Stack.Screen options={{ animation: 'slide_from_left' }} />
+      <Header title="totos" />
       <FlatList
         data={nodes}
         keyExtractor={(n) => n.id}
