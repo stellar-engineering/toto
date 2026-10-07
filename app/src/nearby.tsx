@@ -77,7 +77,9 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
     setPassword('');
     go({ at: 'networks', setup, list: null });
     try {
-      const reply = await setup.ask({ type: 'networks' });
+      // Where this phone is set to be, for a new Pi that will not use its Wi-Fi until it is told.
+      const country = /[-_]([A-Z]{2})\b/.exec(Intl.DateTimeFormat().resolvedOptions().locale)?.[1];
+      const reply = await setup.ask({ type: 'networks', country });
       if (reply.type !== 'networks') throw new Error(reply.type === 'refused' ? reply.problem : 'It could not list networks.');
       go({ at: 'networks', setup, list: reply.list });
     } catch (err) {

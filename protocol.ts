@@ -31,7 +31,9 @@ export type WifiNetwork = { ssid: string; signal: number; secure: boolean };
 
 /** Phone -> device. */
 export type SetupRequest =
-  | { type: 'networks' }
+  // `country` is where the phone thinks it is (two letters). A new Pi needs to be told before
+  // its Wi-Fi radio will switch on, and it has no other way to find out.
+  | { type: 'networks'; country?: string }
   | { type: 'join'; ssid: string; password: string }
   // Asks for what the app needs to add this device: the answer is its way of handing over the keys.
   | { type: 'claim' };

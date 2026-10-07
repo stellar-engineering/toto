@@ -5,6 +5,16 @@
 set -euo pipefail
 
 case "${1:-}" in
+  wifi-country)
+    # A Pi keeps its Wi-Fi radio off until it knows which country's rules to follow. Set only
+    # where none is: one that is already set was chosen by someone who knew where the device is.
+    [[ "${2:-}" =~ ^[A-Z]{2}$ ]] || { echo "toto-priv: bad country" >&2; exit 2; }
+    if command -v raspi-config >/dev/null; then
+      [ -n "$(raspi-config nonint get_wifi_country 2>/dev/null || true)" ] || raspi-config nonint do_wifi_country "$2" >/dev/null 2>&1 || true
+    fi
+    rfkill unblock wifi 2>/dev/null || true
+    exit 0
+    ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.
     exec nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan auto

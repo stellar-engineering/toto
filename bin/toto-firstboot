@@ -1,0 +1,26 @@
+#!/bin/bash
+# What has to be unique to a device or redone each time it starts, so cannot be baked into an
+# image: its token, its name, and switching the Bluetooth radio on. Safe to run again and again.
+# Run by install.sh on an ordinary install, and by toto-firstboot.service on every boot of an image.
+set -euo pipefail
+
+if [ ! -f /etc/toto.env ]; then
+  (
+    umask 077
+    printf 'TOTO_TOKEN=%s\n# One of these: an API key, or a subscription token from `claude setup-token`.\nANTHROPIC_API_KEY=\nCLAUDE_CODE_OAUTH_TOKEN=\n' "$(openssl rand -hex 16)" > /etc/toto.env
+  )
+fi
+grep -q '^TOTO_ISOLATE=' /etc/toto.env || echo 'TOTO_ISOLATE=1' >> /etc/toto.env
+grep -q '^TOTO_DATA_DIR=' /etc/toto.env || echo 'TOTO_DATA_DIR=/var/lib/toto' >> /etc/toto.env
+# Set to a relay's wss:// address to reach this device from outside the local network.
+grep -q '^TOTO_RELAY_URL=' /etc/toto.env || echo "TOTO_RELAY_URL=${TOTO_DEFAULT_RELAY:-}" >> /etc/toto.env
+
+# An image starts out with the stock name. Give each device its own, so two on one network do not clash.
+if [ "${TOTO_NAME_DEVICE:-}" = 1 ] && [ "$(hostname)" = raspberrypi ]; then
+  name="toto-$(head -c 2 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  hostnamectl set-hostname "$name" 2>/dev/null || echo "$name" > /etc/hostname
+  sed -i "s/\braspberrypi\b/$name/g" /etc/hosts
+fi
+
+# A Pi ships with the Bluetooth radio switched off.
+rfkill unblock bluetooth 2>/dev/null || true

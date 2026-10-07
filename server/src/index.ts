@@ -22,6 +22,7 @@ import {
   removeProject,
   removeWorktree,
   setLan,
+  wifiCountry,
   wifiJoin,
   wifiList,
 } from './projects.ts';
@@ -429,6 +430,7 @@ startBluetooth({
   handle: async (request) => {
     switch (request?.type) {
       case 'networks': {
+        if (typeof request.country === 'string' && /^[A-Z]{2}$/.test(request.country)) await wifiCountry(request.country);
         const found = await wifiList();
         wifiNow = found.current;
         return { type: 'networks', ...found };

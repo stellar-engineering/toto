@@ -135,6 +135,9 @@ export async function wifiList(): Promise<{ list: { ssid: string; signal: number
   return { list: [...best.values()].sort((a, b) => b.signal - a.signal).slice(0, 20), current };
 }
 
+/** Tells the Wi-Fi radio which country it is in, if nothing has yet. Without that a new Pi keeps it switched off. */
+export const wifiCountry = (country: string) => sh('sudo', ['-n', PRIV, 'wifi-country', country]).catch(() => {});
+
 /** Joins a Wi-Fi network, keeping the one already configured to fall back on. Throws with the reason if it cannot. */
 export const wifiJoin = (ssid: string, password: string) => sh('sudo', ['-n', PRIV, 'wifi-join', ssid], {}, password + '\n');
 

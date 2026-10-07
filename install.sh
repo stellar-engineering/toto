@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Installs toto-server on 64-bit Raspberry Pi OS or Debian. Run from a checkout: sudo ./install.sh
 # Safe to re-run; it upgrades the server in place and keeps /etc/toto.env and all projects.
+#
+# With TOTO_IMAGE=1 it prepares a system image instead of a running machine: nothing is started,
+# and nothing unique to one device (its token, its name) is created. See image/build.sh.
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
@@ -18,11 +21,10 @@ command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
 id toto >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin toto
 getent group toto-projects >/dev/null || groupadd --system toto-projects
 install -d -o toto -g toto -m 700 /var/lib/toto
-# Bluetooth, for setting a new device up from a phone. A Pi ships with the radio switched off.
-rfkill unblock bluetooth 2>/dev/null || true
 
 install -d /opt/toto /opt/toto/bin
 install -m 755 "$src/bin/toto-priv" /opt/toto/bin/toto-priv
+install -m 755 "$src/bin/toto-firstboot" /opt/toto/bin/toto-firstboot
 rm -rf /opt/toto/server
 cp -r "$src/server" "$src/protocol.ts" /opt/toto/
 rm -rf /opt/toto/server/node_modules
@@ -42,19 +44,12 @@ visudo -cf "$sudoers" >/dev/null
 install -m 440 "$sudoers" /etc/sudoers.d/toto
 rm -f "$sudoers"
 
-if [ ! -f /etc/toto.env ]; then
-  (umask 077; printf 'TOTO_TOKEN=%s\n# One of these: an API key, or a subscription token from `claude setup-token`.\nANTHROPIC_API_KEY=\nCLAUDE_CODE_OAUTH_TOKEN=\n' "$(openssl rand -hex 16)" > /etc/toto.env)
-fi
-grep -q '^TOTO_ISOLATE=' /etc/toto.env || echo 'TOTO_ISOLATE=1' >> /etc/toto.env
-grep -q '^TOTO_DATA_DIR=' /etc/toto.env || echo 'TOTO_DATA_DIR=/var/lib/toto' >> /etc/toto.env
-# Set to a relay's wss:// address to reach this device from outside the local network.
-grep -q '^TOTO_RELAY_URL=' /etc/toto.env || echo 'TOTO_RELAY_URL=' >> /etc/toto.env
-
 cat > /etc/systemd/system/toto.service <<'EOF'
 [Unit]
 Description=Toto server
-After=network-online.target
-Wants=network-online.target
+# Not network-online: a new device has no network until Toto's Bluetooth setup gives it one.
+After=network.target toto-firstboot.service bluetooth.service
+Wants=toto-firstboot.service
 
 [Service]
 User=toto
@@ -72,6 +67,29 @@ KillMode=process
 WantedBy=multi-user.target
 EOF
 
+# Its token, its name and its radios: on this machine now, or on each device when an image first starts.
+cat > /etc/systemd/system/toto-firstboot.service <<'EOF'
+[Unit]
+Description=Toto first-boot setup
+Before=toto.service
+After=systemd-rfkill.service
+
+[Service]
+Type=oneshot
+Environment=TOTO_NAME_DEVICE=1 TOTO_DEFAULT_RELAY=wss://toto.royletron.dev
+ExecStart=/opt/toto/bin/toto-firstboot
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+if [ "${TOTO_IMAGE:-}" = 1 ]; then
+  systemctl enable toto toto-firstboot
+  echo "Toto is installed into this image."
+  exit 0
+fi
+
+/opt/toto/bin/toto-firstboot
 systemctl daemon-reload
 systemctl enable toto
 systemctl restart toto
