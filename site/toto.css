@@ -18,12 +18,12 @@ html { background: var(--tube); }
 /* No background on the body: the landscape sits between the page's colour and its content. */
 #land { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 body { margin: 0; color: var(--phosphor); font-family: var(--mono); font-size: 15px; line-height: 1.6; padding-inline: 20px; padding-block: 0 80px; }
-main, header.top, footer { max-width: 760px; margin-inline: auto; }
+main, header.top, footer { max-width: 1000px; margin-inline: auto; }
 
 a { color: var(--sky); text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 h1, h2, h3 { font-weight: 700; line-height: 1.2; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(28px, 6vw, 40px); letter-spacing: -1px; }
+h1 { font-size: clamp(28px, 6vw, 40px); max-width: 16ch; letter-spacing: -1px; }
 h2 { font-size: 22px; letter-spacing: -0.3px; }
 h3 { font-size: 15px; }
 p { margin: 0; max-width: 64ch; }
@@ -49,9 +49,16 @@ section + section { border-top: 1px solid var(--rule); padding-top: 40px; }
 .face.waiting, .face.waiting .nose { color: var(--amber); }
 .face.offline, .face.offline .nose { color: var(--ghost); }
 
-.hero { gap: 28px; }
-.hero .face { font-size: clamp(56px, 17vw, 104px); }
-.hero .pitch { font-size: 19px; max-width: 34ch; }
+/* The opening: what it is on the left, the app at its defining moment on the right. */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 40px 64px; align-items: center; }
+.hero .lead { display: flex; flex-direction: column; gap: 28px; }
+.hero .face { font-size: clamp(56px, 17vw, 112px); }
+.hero h1 { font-size: clamp(30px, 5.2vw, 52px); letter-spacing: -1.5px; max-width: 12ch; }
+.hero .pitch { font-size: 19px; max-width: 36ch; }
+.shot { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.shot .session { box-shadow: 0 0 0 8px var(--tube), 0 0 0 9px var(--rule); }
+.shot figcaption { font-size: 13px; }
+.start { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px 56px; align-items: start; }
 
 /* The live count, drawn like the status line at the bottom of the app. */
 .statusline { display: flex; align-items: center; gap: 14px; background: var(--bezel); padding: 12px 16px; max-width: 520px; }
@@ -76,9 +83,10 @@ section + section { border-top: 1px solid var(--rule); padding-top: 40px; }
 .session .ask .buttons span { padding: 10px 22px; font-weight: 700; border: 1.5px solid var(--tube); }
 .session .ask .buttons span:first-child { background: var(--tube); color: var(--amber); flex: 1; text-align: center; }
 
-.parts { display: grid; grid-template-columns: max-content 1fr; gap: 14px 24px; align-items: baseline; }
+.parts { margin: 0; }
 .parts dt { font-weight: 700; }
-.parts dd { margin: 0; max-width: 56ch; }
+.parts dt::before { content: '❯ '; color: var(--amber); }
+.parts dd { margin: 0; }
 
 ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
 ol.steps li { counter-increment: step; display: grid; grid-template-columns: 2.4ch 1fr; gap: 12px; max-width: 66ch; }
@@ -118,7 +126,6 @@ th { color: var(--ghost); font-weight: 400; }
 footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--rule); color: var(--ghost); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 24px; }
 footer a { color: var(--ghost); }
 
-@media (max-width: 480px) {
-  .parts { grid-template-columns: 1fr; gap: 4px 0; }
-  .parts dd { margin-bottom: 12px; }
+@media (max-width: 860px) {
+  .hero, .start { grid-template-columns: minmax(0, 1fr); }
 }

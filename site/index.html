@@ -22,14 +22,29 @@
 
 <main>
   <section class="hero">
-    <pre class="face" data-face="awake" role="img" aria-label="Toto's mark: a small dog's face made of six characters, blinking."></pre>
-    <h1>Your agents keep working at home.</h1>
-    <p class="pitch">Toto is a small box on your own network that runs your coding agents around the clock. Shut the laptop. They carry on, and ask your phone when they need you.</p>
-    <div class="statusline" aria-live="polite">
-      <pre class="face" data-face="looking" data-live data-nose="none" aria-hidden="true"></pre>
-      <b data-count>Counting Totos…</b>
+    <div class="lead">
+      <pre class="face" data-face="awake" role="img" aria-label="Toto's mark: a small dog's face made of six characters, blinking."></pre>
+      <h1>Your agents keep working at home.</h1>
+      <p class="pitch">Toto is a small box on your own network that runs your coding agents around the clock. Shut the laptop. They carry on, and ask your phone when they need you.</p>
+      <div class="statusline" aria-live="polite">
+        <pre class="face" data-face="looking" data-live data-nose="none" aria-hidden="true"></pre>
+        <b data-count>Counting Totos…</b>
+      </div>
+      <p class="dim">That number is live. Every Toto that is switched on holds a line open to the relay, and this page asks the relay how many there are.</p>
     </div>
-    <p class="dim">That number is live. Every Toto that is switched on holds a line open to the relay, and this page asks the relay how many there are.</p>
+    <figure class="shot">
+    <div class="session" role="img" aria-label="A conversation in the Toto app. You asked an agent to add retry backoff to a webhook sender. It read a file, and is now asking permission to run the tests, with Allow and Deny buttons.">
+      <div class="you">Add exponential backoff to the webhook sender and cover it with tests.</div>
+      <div class="tool"><span class="dim">▸ </span><b>Read</b><span class="dim">  src/webhooks/sender.ts</span><small>export async function send(hook, payload) {</small></div>
+      <div class="tool"><span class="dim">▸ </span><b>Edit</b><span class="dim">  src/webhooks/sender.ts</span><small>Added a retry loop with jittered backoff.</small></div>
+      <div class="ask">
+        <b><span>|O O|</span><span>Allow Bash?</span></b>
+        <span>npm test -- webhooks</span>
+        <div class="buttons"><span>Allow</span><span>Deny</span></div>
+      </div>
+    </div>
+      <figcaption class="dim">The app, at the moment an agent stops to ask. Or tell it not to ask, and it works straight through.</figcaption>
+    </figure>
   </section>
 
   <section aria-labelledby="what">
@@ -50,36 +65,27 @@
     </div>
   </section>
 
-  <section aria-labelledby="looks">
-    <h2 id="looks">What it looks like</h2>
-    <p>You give an agent a job in a project. It reads, edits and runs things. This is the moment it stops to ask.</p>
-    <div class="session" role="img" aria-label="A conversation in the Toto app. You asked an agent to add retry backoff to a webhook sender. It read a file, and is now asking permission to run the tests, with Allow and Deny buttons.">
-      <div class="you">Add exponential backoff to the webhook sender and cover it with tests.</div>
-      <div class="tool"><span class="dim">▸ </span><b>Read</b><span class="dim">  src/webhooks/sender.ts</span><small>export async function send(hook, payload) {</small></div>
-      <div class="tool"><span class="dim">▸ </span><b>Edit</b><span class="dim">  src/webhooks/sender.ts</span><small>Added a retry loop with jittered backoff.</small></div>
-      <div class="ask">
-        <b><span>|O O|</span><span>Allow Bash?</span></b>
-        <span>npm test -- webhooks</span>
-        <div class="buttons"><span>Allow</span><span>Deny</span></div>
-      </div>
-    </div>
-    <p class="dim">Or tell an agent it need not ask, and it will work straight through. You can change your mind mid-job.</p>
-  </section>
-
   <section aria-labelledby="parts">
     <h2 id="parts">The three parts</h2>
-    <dl class="parts">
-      <dt>The box</dt>
-      <dd>A Raspberry Pi 4 or 5, or any small Linux machine. It keeps your projects, each walled off from the others, and runs the agents. Claude Code today; anything else by hand in a terminal you can open from your phone.</dd>
-      <dt>The app</dt>
-      <dd>Finds a new Toto over Bluetooth and puts it on your Wi&#8209;Fi. After that it is where you start agents, read what they are doing, and say yes or no.</dd>
-      <dt>The relay</dt>
-      <dd>For when you are out. Your Toto and your phone both connect to it and it passes sealed messages between them. It cannot read them. You can <a href="/docs#relay">run your own</a>.</dd>
+    <dl class="parts points">
+      <div>
+        <dt>The box</dt>
+        <dd class="dim">A Raspberry Pi 4 or 5, or any small Linux machine. It keeps your projects, each walled off from the others, and runs the agents. Claude Code today; anything else by hand in a terminal you can open from your phone.</dd>
+      </div>
+      <div>
+        <dt>The app</dt>
+        <dd class="dim">Finds a new Toto over Bluetooth and puts it on your Wi&#8209;Fi. After that it is where you start agents, read what they are doing, and say yes or no.</dd>
+      </div>
+      <div>
+        <dt>The relay</dt>
+        <dd class="dim">For when you are out. Your Toto and your phone both connect to it and it passes sealed messages between them. It cannot read them. You can <a href="/docs#relay">run your own</a>.</dd>
+      </div>
     </dl>
   </section>
 
   <section aria-labelledby="start">
     <h2 id="start">Getting one going</h2>
+    <div class="start">
     <ol class="steps">
       <li><span>Flash the Toto image onto a card and put it in a Pi, or install Toto on a Linux machine you already have.</span></li>
       <li><span>Plug it in. In the app, choose <b>Find a new Toto nearby</b>, pick your Wi&#8209;Fi and give it the password.</span></li>
@@ -87,6 +93,7 @@
       <li><span>Add a project, which is a git repository, and start an agent in it.</span></li>
     </ol>
     <p class="note">Toto is still being built, and none of it is released yet: there is no image to download and the app is not in any store. Everything on this page works today on the handful of Totos counted above. <a href="/docs">The documentation</a> describes it as it is.</p>
+    </div>
   </section>
 </main>
 
