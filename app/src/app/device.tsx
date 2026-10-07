@@ -66,7 +66,7 @@ export default function Device() {
 
   return (
     <Screen bare>
-      <Header parent={settings?.name ?? 'toto'} title="device" />
+      <Header parent={settings?.name ?? 'toto'} title="settings" />
       <View style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled">
           <Section

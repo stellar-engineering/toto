@@ -63,7 +63,12 @@ export default function Projects() {
   const router = useRouter();
   return (
     <Screen>
-      <Header parent="totos" onBack={() => router.push('/nodes')} title={node?.name ?? 'toto'} />
+      <Header
+        parent="totos"
+        onBack={() => router.push('/nodes')}
+        title={node?.name ?? 'toto'}
+        right={<Btn label="settings" onPress={() => router.push('/device')} spoken={`Settings for ${node?.name ?? 'this Toto'}`} style={{ minHeight: 32, paddingHorizontal: 10 }} />}
+      />
       <View style={{ flex: 1 }}>
         <FlatList
           data={projects}
