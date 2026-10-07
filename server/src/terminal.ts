@@ -35,7 +35,8 @@ const SCROLLBACK = 300;
 // codes, then a NUL. In: a line per keystroke: "t <base64>" types text, "k <name>" presses a key.
 const SERVE = `
 name=$1
-fifo=$(mktemp -u "\${TMPDIR:-/tmp}/toto-term.XXXXXX")
+# In the user's home, so that deleting a project (which kills this without warning) takes it too.
+fifo=$(mktemp -u "$HOME/.toto-term.XXXXXX")
 mkfifo -m 600 "$fifo" || exit 1
 typist=
 cleanup() {
