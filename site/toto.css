@@ -95,7 +95,7 @@ ol.steps li::before { content: counter(step); color: var(--amber); font-weight: 
 /* The one thing on the page to act on. */
 .get { display: flex; flex-direction: column; gap: 2px; align-self: flex-start; background: var(--amber); color: var(--tube); padding: 14px 20px; text-decoration: none; }
 .get:hover { background: var(--phosphor); }
-.get span { font-size: 13px; }
+.get > span { font-size: 13px; }
 .note { border-left: 2px solid var(--amber); padding-left: 16px; max-width: 64ch; }
 .block { background: var(--bezel); padding: 14px 16px; overflow-x: auto; max-width: 100%; }
 .block .c { color: var(--ghost); }
