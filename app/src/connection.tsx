@@ -51,6 +51,8 @@ type Connection = {
   agents: Agent[];
   /** How this Toto's agents are signed in to Claude. Undefined until it has said. */
   claude?: ClaudeAccount;
+  /** What this Toto runs, the newer release there is if any, and whether it is installing one. Undefined on a Toto too old to say. */
+  software?: { version: string; latest?: string; updating: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
   /** Who agents' commits are attributed to. */
@@ -131,6 +133,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [identity, setIdentity] = useState<Identity>();
   const [claude, setClaude] = useState<ClaudeAccount>();
   const [claudeLogin, setClaudeLogin] = useState<string>();
+  const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
   const [via, setVia] = useState<Route>('local');
@@ -162,6 +165,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setAgents(msg.agents);
         setSshKey(msg.sshKey);
         setIdentity(msg.identity);
+        setSoftware(msg.version ? { version: msg.version, latest: msg.latest, updating: msg.updating } : undefined);
         setClaude((was) => {
           // However it changed, a sign-in that was under way is over.
           if (was !== msg.claude) setClaudeLogin(undefined);
@@ -248,6 +252,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setIdentity(undefined);
     setClaude(undefined);
     setClaudeLogin(undefined);
+    setSoftware(undefined);
     if (!to) return setStatus('setup');
     setStatus('reconnecting');
     dial(to);
@@ -312,7 +317,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, busy, projects, agents, claude, claudeLogin, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, busy, projects, agents, claude, claudeLogin, software, identity, sshKey, events, activity, tally, screens }}>
       {children}
     </Context.Provider>
   );

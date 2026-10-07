@@ -20,6 +20,7 @@ import {
   deviceKey,
   installEnv,
   openApprovals,
+  startUpdate,
   removeProject,
   removeWorktree,
   setLan,
@@ -97,7 +98,34 @@ for (const p of state.projects) {
   p.lan ??= false;
   await setLan(p.user, p.lan).catch((err) => console.error(`FIREWALL NOT APPLIED for ${p.name}: ${err.message}`));
 }
-const snapshot = (): ServerMessage => ({ type: 'state', name: state.name, claude: claude(), projects: state.projects, agents: state.agents, identity: state.identity, sshKey });
+// --- Updates. The server only notices that a release exists and asks for it; fetching, checking
+// its signature and installing are the root updater's job (bin/toto-update.mjs), which does not
+// take our word for anything.
+const version: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const RELEASES = 'https://github.com/stellar-engineering/toto/releases/latest/download';
+let latest: string | undefined;
+let updating = false;
+async function checkForUpdate() {
+  const res = await fetch(`${RELEASES}/version`, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
+  const found = res?.ok ? (await res.text()).trim() : undefined;
+  // Only a hint for the app to show: the updater decides for itself what is newer.
+  if (!found || !/^\d+\.\d+\.\d+$/.test(found) || found === latest) return;
+  latest = found;
+  broadcast(snapshot());
+}
+
+const snapshot = (): ServerMessage => ({
+  type: 'state',
+  name: state.name,
+  claude: claude(),
+  projects: state.projects,
+  agents: state.agents,
+  identity: state.identity,
+  sshKey,
+  version,
+  latest: latest === version ? undefined : latest,
+  updating,
+});
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
@@ -339,6 +367,23 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (agent.mode === 'auto')
         for (const id of openApprovals(logs.get(agent.id)!)) running.get(agent.id)?.resolve(id, true);
       return;
+    case 'check_update':
+      await checkForUpdate();
+      return send(ws, snapshot());
+    case 'update': {
+      // The install restarts the server, which would cut off anything mid-thought.
+      if (running.size) throw new Error('Agents are working. Update when they have finished.');
+      updating = true;
+      broadcast(snapshot());
+      try {
+        await startUpdate();
+      } catch (err) {
+        updating = false;
+        broadcast(snapshot());
+        throw err;
+      }
+      return;
+    }
     default:
       // An app newer than this server asking for something added since. Say so: silence leaves it waiting for ever.
       throw new Error('This Toto does not know how to do that yet. It needs updating.');
@@ -420,6 +465,8 @@ function dialRelay() {
       return;
     }
     const c = msg.c;
+    // The relay passing on that a release was published. Worth a look; nothing is taken on its word.
+    if (c === undefined && msg.t === 'update') return void checkForUpdate();
     if (typeof c !== 'string') return;
     if (msg.t === 'close') {
       conns.get(c)?.closed();
@@ -576,3 +623,7 @@ wss.on('listening', () => {
   console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);
   if (!process.env.TOTO_TOKEN) console.log(`token: ${token}`);
 });
+
+// Look for a release now and once a day, so a Toto the relay never reaches still finds out.
+void checkForUpdate();
+setInterval(checkForUpdate, 24 * 60 * 60_000).unref();

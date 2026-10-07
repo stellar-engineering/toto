@@ -77,7 +77,20 @@ export type Identity = { name: string; email: string };
 export type ServerMessage =
   // The full picture, sent in answer to `sync` and again whenever it changes. `name` is what
   // this device is called. `sshKey` is its public key, for the user to add to their git host.
-  | { type: 'state'; name: string; claude: ClaudeAccount; projects: Project[]; agents: Agent[]; identity: Identity; sshKey?: string }
+  | {
+      type: 'state';
+      name: string;
+      claude: ClaudeAccount;
+      projects: Project[];
+      agents: Agent[];
+      identity: Identity;
+      sshKey?: string;
+      /** The version of Toto this device runs; `latest` is set when a newer one has been released. */
+      version: string;
+      latest?: string;
+      /** An update is being installed. The device restarts when it is done. */
+      updating: boolean;
+    }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
   // The answer to `ping`: this device is here, and this is what it is called.
@@ -105,6 +118,9 @@ export type ClientMessage =
   // Or use an API key instead.
   | { type: 'claude_key'; key: string }
   | { type: 'claude_logout' }
+  // Look for a newer release now; and install the one that was found.
+  | { type: 'check_update' }
+  | { type: 'update' }
   // This phone's push token, so the device can tell it when an agent needs attention.
   | { type: 'register_push'; token: string }
   | { type: 'set_identity'; name: string; email: string }

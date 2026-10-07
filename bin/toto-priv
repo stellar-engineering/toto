@@ -15,6 +15,10 @@ case "${1:-}" in
     rfkill unblock wifi 2>/dev/null || true
     exit 0
     ;;
+  update)
+    # No arguments are passed on: what to install and whom to trust are the updater's own business.
+    exec /usr/bin/node /opt/toto/bin/toto-update.mjs
+    ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.
     list() { nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan "$1"; }

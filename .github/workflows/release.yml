@@ -1,0 +1,58 @@
+# Publishes a Toto release when a version tag is pushed:  git tag v0.2.0 && git push origin v0.2.0
+# The tag must match the version in server/package.json. A release is what Totos update from, so it
+# is signed here with the release key; a Toto installs nothing that key did not sign.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The tag is the version
+        run: test "v$(node -p "require('./server/package.json').version")" = "$GITHUB_REF_NAME"
+      - name: Test
+        run: cd server && npm ci && npm test
+      - name: Bundle
+        run: |
+          tar czf toto.tar.gz install.sh protocol.ts release.pub LICENSE bin server/src server/package.json server/package-lock.json server/tsconfig.json
+          node -p "require('./server/package.json').version" > version
+      - name: Sign, and check the signature is one a Toto will accept
+        env:
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+        run: |
+          node -e "const c=require('crypto'),f=require('fs');f.writeFileSync('toto.tar.gz.sig',c.sign(null,f.readFileSync('toto.tar.gz'),process.env.RELEASE_KEY))"
+          node --input-type=module -e "import {signedBy} from './bin/toto-update.mjs';import {readFileSync as r} from 'node:fs';if(!signedBy(r('release.pub'),r('toto.tar.gz'),r('toto.tar.gz.sig')))throw new Error('signature does not match release.pub')"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" toto.tar.gz toto.tar.gz.sig version --title "Toto ${GITHUB_REF_NAME#v}" --generate-notes
+      - name: Tell the Totos that are online
+        env:
+          ANNOUNCE_KEY: ${{ secrets.ANNOUNCE_KEY }}
+        run: 'curl -fsS -X POST -H "Authorization: Bearer $(printf %s "$ANNOUNCE_KEY" | tr -d "\n")" https://toto.royletron.dev/announce'
+
+  # The flashable image, added to the same release. Separate, so a slow or failed image build does
+  # not hold up the update itself.
+  image:
+    needs: release
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq parted e2fsprogs rsync xz-utils fdisk
+          sudo image/build.sh
+          cp /var/tmp/toto-image/toto.img.xz .
+      - name: Add it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" toto.img.xz

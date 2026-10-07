@@ -7,7 +7,7 @@
   // or delete it to use your workers.dev address.
   "routes": [{ "pattern": "toto.royletron.dev", "custom_domain": true }],
   // The site at the same address as the relay. Anything that is not a file there reaches the Worker.
-  "assets": { "directory": "../site", "run_worker_first": ["/v1/*", "/stats"] },
+  "assets": { "directory": "../site", "run_worker_first": ["/v1/*", "/stats", "/announce"] },
   "durable_objects": {
     "bindings": [
       { "name": "DEVICE", "class_name": "Device" },

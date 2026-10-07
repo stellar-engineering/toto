@@ -48,7 +48,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, software, request, busy, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -63,6 +63,12 @@ export default function Device() {
           forget();
         },
       },
+    ]);
+
+  const update = () =>
+    Alert.alert(`Update to ${software?.latest}?`, 'Your Toto downloads the release, checks it is genuine, installs it and restarts. If the new version will not start, it puts the old one back.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Update', onPress: () => request({ type: 'update' }) },
     ]);
 
   return (
@@ -93,6 +99,28 @@ export default function Device() {
             about={claude === 'subscription' ? 'Signed in with your Claude subscription.' : claude === 'api_key' ? 'Using an Anthropic API key.' : 'Not signed in. Agents cannot work until it is.'}>
             <Btn kind={claude === 'none' ? 'primary' : 'plain'} label={claude === 'none' ? 'Sign in to Claude' : 'Change'} onPress={() => router.push('/claude')} />
           </Section>
+          <Rule />
+          {software ? (
+            <Section
+              title="Software"
+              about={
+                software.updating
+                  ? 'Updating. Your Toto restarts when it is done, which takes a few minutes.'
+                  : software.latest
+                    ? `Version ${software.version}. Version ${software.latest} is available.`
+                    : `Version ${software.version}. Up to date.`
+              }>
+              {software.latest ? (
+                <Btn kind="primary" label={software.updating ? 'Updating…' : `Update to ${software.latest}`} onPress={update} disabled={software.updating || busy || status !== 'open'} />
+              ) : (
+                <Btn label={busy ? 'Checking…' : 'Check for updates'} onPress={() => request({ type: 'check_update' })} disabled={software.updating || busy || status !== 'open'} />
+              )}
+            </Section>
+          ) : (
+            <Section title="Software" about="This Toto is too old to update itself. Flash it with a newer image, or run the installer again.">
+              {null}
+            </Section>
+          )}
           <Rule />
           {identity && (
             <Section title="Commit author" about="Agents make their git commits under this name and email.">

@@ -25,6 +25,9 @@ install -d -o toto -g toto -m 700 /var/lib/toto
 install -d /opt/toto /opt/toto/bin
 install -m 755 "$src/bin/toto-priv" /opt/toto/bin/toto-priv
 install -m 755 "$src/bin/toto-firstboot" /opt/toto/bin/toto-firstboot
+# The updater, and the public half of the key a release must be signed with. Root's, like the helper.
+install -m 755 "$src/bin/toto-update.mjs" /opt/toto/bin/toto-update.mjs
+install -m 644 "$src/release.pub" /opt/toto/release.pub
 rm -rf /opt/toto/server
 cp -r "$src/server" "$src/protocol.ts" /opt/toto/
 rm -rf /opt/toto/server/node_modules
@@ -94,6 +97,8 @@ systemctl daemon-reload
 systemctl enable toto
 systemctl restart toto
 
+# Only to a person at a terminal: an update runs this too, and its output is kept in the system log.
+[ -t 1 ] || exit 0
 echo
 echo "Toto is running at ws://$(hostname).local:7860"
 echo "Token: $(grep '^TOTO_TOKEN=' /etc/toto.env | cut -d= -f2)"

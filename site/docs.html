@@ -30,6 +30,7 @@
     <a href="#claude">Signing in to Claude</a>
     <a href="#agents">Projects and agents</a>
     <a href="#device">On the device itself</a>
+    <a href="#updating">Updating</a>
     <a href="#relay">The relay</a>
     <a href="#security">How it is kept private</a>
     <a href="#limits">Known limits</a>
@@ -39,14 +40,14 @@
 <main class="doc">
   <section>
     <h1>Documentation</h1>
-    <p class="note">Toto is unreleased. This describes how it works today for the people building it. Where something is missing or unproven, it says so.</p>
+    <p class="note">Toto is early. This describes how it works today. Where something is missing or unproven, it says so.</p>
   </section>
 
   <section aria-labelledby="need">
     <h2 id="need">What you need</h2>
     <ul>
       <li>A Raspberry Pi 4 or 5 with 4GB of memory or more, or another 64-bit machine running Debian. Toto has run on a Pi 4 and on an ordinary PC.</li>
-      <li>An Android phone for the app. An iPhone build is in progress and less tested.</li>
+      <li>An Android phone for the app, which is not in a store yet: you build it from <a href="https://github.com/stellar-engineering/toto">the source</a>. An iPhone build is in progress and less tested.</li>
       <li>A Claude subscription, or an Anthropic API key.</li>
     </ul>
   </section>
@@ -54,11 +55,12 @@
   <section aria-labelledby="install">
     <h2 id="install">Installing</h2>
     <h3>On a Raspberry Pi, from the image</h3>
-    <p>The image is the smallest official Raspberry Pi OS with Toto already on it. Flash it to a card with Raspberry Pi Imager (Choose OS, then Use custom), put the card in the Pi and plug it in. There is no login to set up: on first start it gives itself a name and a key and waits to be found by your phone.</p>
-    <p class="dim">The image is built by <code>image/build.sh</code> and is not yet available to download.</p>
+    <p>The image is the smallest official Raspberry Pi OS with Toto already on it. <a href="https://github.com/stellar-engineering/toto/releases/latest/download/toto.img.xz">Download the latest image</a>, flash it to a card with Raspberry Pi Imager (Choose OS, then Use custom), put the card in the Pi and plug it in. There is no login to set up: on first start it gives itself a name and a key and waits to be found by your phone.</p>
     <h3>On a machine you already have</h3>
-    <p>From a copy of the source, on 64-bit Debian or Raspberry Pi OS:</p>
-    <pre class="block">sudo ./install.sh</pre>
+    <p>On 64-bit Debian or Raspberry Pi OS:</p>
+    <pre class="block">git clone https://github.com/stellar-engineering/toto
+cd toto
+sudo ./install.sh</pre>
     <p>It installs Node, Claude Code and Toto, sets Toto up as a service, and prints the address and token to give the app. It is safe to run again to upgrade.</p>
   </section>
 
@@ -106,6 +108,14 @@ sudo toto name Workshop</pre>
     <p>Pairing mode makes the Toto announce itself over Bluetooth again and lets a new phone set it up. It ends when a phone does, or when the time runs out.</p>
   </section>
 
+  <section aria-labelledby="updating">
+    <h2 id="updating">Updating</h2>
+    <p>A Toto looks for a new release once a day, and straight away when the relay tells it one has been published. When there is one, the app's settings show it under <b>Software</b>. Nothing is installed until you tap <b>Update</b>, and not while agents are working.</p>
+    <p>The Toto then downloads the release from <a href="https://github.com/stellar-engineering/toto/releases">GitHub</a>, checks it, installs it and restarts. If the new version will not start, it puts the old one back.</p>
+    <h3>What it checks</h3>
+    <p>Every release is signed with a key that only the release process holds, and every Toto carries the public half. A Toto installs a release only if that signature is good and the release is newer than what it has. The relay's part is to say "look now"; it is not believed about what to install, and neither is the place the download comes from.</p>
+  </section>
+
   <section aria-labelledby="relay">
     <h2 id="relay">The relay</h2>
     <p>At home your phone talks to your Toto directly. Away from home it cannot, because your Toto sits behind your router. So the Toto keeps one outgoing connection open to a relay, your phone connects to the same place, and the relay passes messages between the two.</p>
@@ -134,7 +144,7 @@ npx wrangler deploy</pre>
       <li><b>Every connection is encrypted between your phone and your Toto,</b> at home and through the relay alike. Each one starts with fresh random values from both ends, and messages that are forged, repeated or out of order are thrown away.</li>
       <li><b>Bluetooth setup has its own key exchange,</b> so your Wi&#8209;Fi password is not readable in the air. A Toto that has an owner mixes its key into that exchange, so a stranger nearby gets no answer.</li>
       <li><b>Projects are separated by the operating system.</b> One Linux user each, a private home directory, and a firewall rule keeping it off your home network.</li>
-      <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper to do four things as root: make or remove a project's user, open or close the home network to it, and list or join Wi&#8209;Fi.</li>
+      <li><b>The part of Toto that listens to the network is not root.</b> It can ask a small helper to do five things as root: make or remove a project's user, open or close the home network to it, list or join Wi&#8209;Fi, and start an update, which the helper fetches and checks for itself.</li>
       <li><b>Secrets stay off command lines and out of logs.</b> Credentials reach agents through a private file, and what you type into a terminal agent goes down a private pipe.</li>
     </ul>
   </section>

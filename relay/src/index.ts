@@ -33,6 +33,9 @@ export class Stats extends DurableObject<Env> {
   gone(id: string) {
     this.ctx.storage.sql.exec('DELETE FROM live WHERE id = ?', id);
   }
+  ids(): string[] {
+    return this.ctx.storage.sql.exec<{ id: string }>('SELECT id FROM live').toArray().map((row) => row.id);
+  }
   count(): number {
     this.ctx.storage.sql.exec('DELETE FROM live WHERE seen < ?', Date.now() - FRESH);
     return this.ctx.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM live').one().n;
@@ -89,6 +92,11 @@ export class Device extends DurableObject<Env> {
     if (this.device()) await this.present();
   }
 
+  /** Tells the device a release was published, so it looks for itself. */
+  nudge() {
+    this.device()?.send(JSON.stringify({ t: 'update' }));
+  }
+
   /** The device's live connection. During a handover the newest is last. */
   private device(): WebSocket | undefined {
     return this.ctx.getWebSockets('device').findLast((ws) => ws.readyState === WebSocket.OPEN);
@@ -139,6 +147,18 @@ export default {
       const live = await env.STATS.getByName('all').count();
       // Briefly cacheable: the site asks every few seconds, from every visitor.
       return Response.json({ live }, { headers: { 'cache-control': 'public, max-age=10' } });
+    }
+    if (pathname === '/announce' && request.method === 'POST') {
+      // From the release workflow. The key is a secret (wrangler secret put ANNOUNCE_KEY), so it is not in the generated Env.
+      const key = (env as { ANNOUNCE_KEY?: string }).ANNOUNCE_KEY?.trim();
+      const given = request.headers.get('authorization')?.replace(/^Bearer /, '').trim() ?? '';
+      if (!key || (await sha256(given)) !== (await sha256(key))) return new Response('Not allowed', { status: 403 });
+      // ponytail: one call per device from this one request, which Cloudflare caps (50 on the free
+      // plan). Past that, fan out in batches from the counting object's alarm; every Toto also
+      // looks for itself once a day, so the ones this misses only find out later.
+      const ids = (await env.STATS.getByName('all').ids()).slice(0, 40);
+      await Promise.allSettled(ids.map((id) => env.DEVICE.get(env.DEVICE.idFromString(id)).nudge()));
+      return Response.json({ told: ids.length });
     }
     const match = /^\/v1\/([0-9a-f]{32})$/.exec(pathname);
     if (!match) return new Response('Not found', { status: 404 });
