@@ -24,18 +24,20 @@ jobs:
         run: |
           [ -n "$CLOUDFLARE_API_TOKEN" ] && echo "present=yes" >> "$GITHUB_OUTPUT" || echo "::warning::No CLOUDFLARE_API_TOKEN secret, so nothing was deployed."
       - uses: actions/checkout@v4
-        if: steps.token.outputs.present
       - uses: actions/setup-node@v4
-        if: steps.token.outputs.present
         with:
           node-version: 24
-      - name: Check, then deploy
-        if: steps.token.outputs.present
+      # Checked whether or not there is a token, so a change that would not deploy is caught either way.
+      - name: Check
         working-directory: relay
         run: |
           npm ci
           npm run typecheck
-          npx wrangler deploy
+          npx wrangler deploy --dry-run
+      - name: Deploy
+        if: steps.token.outputs.present
+        working-directory: relay
+        run: npx wrangler deploy
       - name: The site answers
         if: steps.token.outputs.present
         run: |
