@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { chmodSync } from 'node:fs';
+import { chmodSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
-import { startClaude, toEvents } from './claude.ts';
+import { browserArgs, startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
 import { readFrame, tmuxKey } from './terminal.ts';
@@ -120,4 +120,15 @@ test('terminal keys: only known names reach tmux', () => {
   assert.equal(tmuxKey('pageup'), 'PPage');
   assert.equal(tmuxKey('ctrl-c'), 'C-c');
   for (const bad of ['ctrl-C', 'ctrl-cc', 'ctrl-;', 'Enter', '-t other', 'constructor', '', undefined, 5]) assert.equal(tmuxKey(bad), undefined, String(bad));
+});
+
+test('the browser plugin is given to Claude only where there is a Chromium to drive', () => {
+  const plugin = fileURLToPath(new URL('../plugins/browser', import.meta.url));
+  assert.deepEqual(browserArgs(plugin, fileURLToPath(import.meta.url)), ['--plugin-dir', plugin]);
+  assert.deepEqual(browserArgs(plugin, '/nowhere/chromium'), []);
+  assert.deepEqual(browserArgs('/nowhere/plugin', fileURLToPath(import.meta.url)), []);
+  // Its server must be the one install.sh installs, and the skill must be there to be found.
+  const mcp = JSON.parse(readFileSync(`${plugin}/.mcp.json`, 'utf8')).mcpServers.browser;
+  assert.equal(mcp.command, 'playwright-mcp');
+  assert.ok(readFileSync(`${plugin}/skills/browser/SKILL.md`, 'utf8').startsWith('---\nname: browser\n'));
 });

@@ -16,6 +16,11 @@ fi
 # nftables for the nft tool only: its service, which would replace the whole firewall, is left off.
 apt-get install -y git sudo openssh-client tmux nftables bluez rfkill network-manager
 command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
+# A headless browser for agents: Chromium from the distribution, driven by Playwright's MCP server,
+# which the plugin in server/plugins/browser hands to Claude. The version is pinned; the server's
+# tests check the plugin names this command.
+apt-get install -y chromium
+npm install -g @playwright/mcp@0.0.83
 
 # The server runs unprivileged as `toto`. Each project gets its own user in `toto-projects`.
 id toto >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin toto

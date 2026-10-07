@@ -1,0 +1,6 @@
+{
+  "name": "toto-browser",
+  "description": "A headless browser for Toto's agents: Playwright's MCP server, driving the Chromium installed on the device, and a skill on using it.",
+  "version": "1.0.0",
+  "author": { "name": "Toto" }
+}

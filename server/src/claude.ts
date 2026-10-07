@@ -1,7 +1,18 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
 import { command } from './projects.ts';
+
+// The browser for agents: a plugin shipped with the server (so every project has it, and an update
+// keeps it current), driving the Chromium that install.sh puts on the device.
+const BROWSER_PLUGIN = fileURLToPath(new URL('../plugins/browser', import.meta.url));
+const CHROMIUM = '/usr/bin/chromium';
+
+/** What gives a Claude session its browser; nothing on a machine that has no Chromium to drive. */
+export const browserArgs = (plugin = BROWSER_PLUGIN, chromium = CHROMIUM): string[] =>
+  existsSync(plugin) && existsSync(chromium) ? ['--plugin-dir', plugin] : [];
 
 const blockText = (content: unknown): string =>
   typeof content === 'string'
@@ -48,6 +59,7 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
     // Claude asks us before anything risky; the server decides whether that reaches the user.
     '--permission-mode', 'manual',
     '--permission-prompt-tool', 'stdio',
+    ...browserArgs(),
     ...(sessionId ? ['--resume', sessionId] : []),
   ]);
   const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] });

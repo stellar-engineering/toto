@@ -23,8 +23,8 @@ mkdir -p "$work" && cd "$work"
 echo "Unpacking…"
 rm -f toto.img toto.img.xz
 xz -dc base.img.xz > toto.img
-# Room for Node, Claude Code and Toto. The system grows to fill the card on first boot anyway.
-truncate -s +1500M toto.img
+# Room for Node, Claude Code, a browser and Toto. The system grows to fill the card on first boot anyway.
+truncate -s +2500M toto.img
 parted -s toto.img resizepart 2 100%
 
 loop="$(losetup --find --show --partscan toto.img)"
