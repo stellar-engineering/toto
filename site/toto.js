@@ -60,6 +60,22 @@ if (contents) {
   for (const h of document.querySelectorAll('.doc h2[id]')) seen.observe(h);
 }
 
+// The latest release: its version on the download link, and the image's size when it is there.
+const get = document.querySelector('[data-release]');
+if (get)
+  fetch('/release')
+    .then((r) => r.json())
+    .then((r) => {
+      if (!r.version) return;
+      get.querySelector('[data-version]').textContent = `Toto ${r.version}`;
+      const app = document.querySelector('[data-android]');
+      if (r.android && app) app.href = r.android.url;
+      if (!r.image) return;
+      get.href = r.image.url;
+      if (r.image.bytes) get.querySelector('[data-size]').textContent = `${Math.round(r.image.bytes / 1e6)} MB`;
+    })
+    .catch(() => {});
+
 // The live count: how many Totos are connected to the relay this minute.
 const count = document.querySelector('[data-count]');
 if (count) {

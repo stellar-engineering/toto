@@ -148,6 +148,24 @@ export default {
       // Briefly cacheable: the site asks every few seconds, from every visitor.
       return Response.json({ live }, { headers: { 'cache-control': 'public, max-age=10' } });
     }
+    if (pathname === '/release') {
+      // The latest release, for the site: GitHub does not let a page ask it directly. Whether the
+      // image and the Android app are there too is checked, since they are added to a release some minutes after the rest.
+      const latest = 'https://github.com/stellar-engineering/toto/releases/latest/download';
+      const cached = { cf: { cacheTtl: 300, cacheEverything: true } };
+      const there = (name: string) => fetch(`${latest}/${name}`, { method: 'HEAD', ...cached });
+      const [said, image, app] = await Promise.all([fetch(`${latest}/version`, cached), there('toto.img.xz'), there('toto.apk')]);
+      const version = said.ok ? (await said.text()).trim() : '';
+      if (!/^\d+\.\d+\.\d+$/.test(version)) return Response.json({}, { status: 502 });
+      return Response.json(
+        {
+          version,
+          image: image.ok ? { url: `${latest}/toto.img.xz`, bytes: Number(image.headers.get('content-length')) || undefined } : undefined,
+          android: app.ok ? { url: `${latest}/toto.apk` } : undefined,
+        },
+        { headers: { 'cache-control': 'public, max-age=300' } },
+      );
+    }
     if (pathname === '/announce' && request.method === 'POST') {
       // From the release workflow. The key is a secret (wrangler secret put ANNOUNCE_KEY), so it is not in the generated Env.
       const key = (env as { ANNOUNCE_KEY?: string }).ANNOUNCE_KEY?.trim();
