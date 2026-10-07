@@ -14,6 +14,35 @@ export type AgentEvent =
   | { type: 'done'; isError: boolean }
   | { type: 'error'; message: string };
 
+// --- Setting a device up over Bluetooth, before the phone can reach it any other way.
+
+/** What a device says about itself to anyone nearby, before any key is exchanged. */
+export type SetupInfo = {
+  /** The id this device is known by at the relay and in the app. */
+  id: string;
+  name: string;
+  /** Whether it already has an owner. If so, only a phone holding its token can go further. */
+  claimed: boolean;
+  /** The Wi-Fi network it is on, if any. */
+  wifi: string | null;
+};
+
+export type WifiNetwork = { ssid: string; signal: number; secure: boolean };
+
+/** Phone -> device. */
+export type SetupRequest =
+  | { type: 'networks' }
+  | { type: 'join'; ssid: string; password: string }
+  // Asks for what the app needs to add this device: the answer is its way of handing over the keys.
+  | { type: 'claim' };
+
+/** Device -> phone. */
+export type SetupReply =
+  | { type: 'networks'; list: WifiNetwork[]; current: string | null }
+  | { type: 'joined'; ok: boolean; problem?: string }
+  | { type: 'claimed'; name: string; address: string; token: string; relay: string }
+  | { type: 'refused'; problem: string };
+
 /** 'ask' pauses the agent for a decision on each risky action; 'auto' approves everything. */
 export type Mode = 'ask' | 'auto';
 

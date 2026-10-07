@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
+import { hostname, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
+import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
@@ -19,6 +20,8 @@ import {
   removeProject,
   removeWorktree,
   setLan,
+  wifiJoin,
+  wifiList,
 } from './projects.ts';
 
 const port = Number(process.env.TOTO_PORT ?? 7860);
@@ -39,7 +42,10 @@ type AgentRecord = Agent & { cwd: string; sessionId?: string };
 const logDir = join(dataDir, 'logs');
 mkdirSync(logDir, { recursive: true });
 const stateFile = join(dataDir, 'state.json');
-const state: { name: string; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
+const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
+  // Whether anyone has connected yet. Until someone has, a phone nearby may set this device up
+  // over Bluetooth and be handed its keys; afterwards only a phone that already holds them may.
+  claimed: false,
   // What this device is called, until someone gives it a better name from the app.
   name: hostname(),
   projects: [],
@@ -167,6 +173,10 @@ async function handle(msg: ClientMessage, ws: Client) {
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
     case 'sync':
+      if (!state.claimed) {
+        state.claimed = true;
+        save();
+      }
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
       return send(ws, { type: 'synced' });
@@ -381,6 +391,55 @@ function dialRelay() {
   };
 }
 if (relayUrl) dialRelay();
+
+// --- Bluetooth: how a phone sets this device up before it can be reached any other way.
+const lanAddress = () => {
+  for (const addresses of Object.values(networkInterfaces()))
+    for (const a of addresses ?? []) if (a.family === 'IPv4' && !a.internal) return `ws://${a.address}:${port}`;
+  return `ws://${hostname()}.local:${port}`;
+};
+// What the device says about itself is read without any waiting, so the network it is on is looked up ahead of time.
+let wifiNow: string | null = null;
+const refreshWifi = () => wifiList().then((w) => (wifiNow = w.current)).catch(() => {});
+startBluetooth({
+  psk,
+  info: () => ({ id: deviceId, name: state.name, claimed: state.claimed, wifi: wifiNow }),
+  handle: async (request) => {
+    switch (request?.type) {
+      case 'networks': {
+        const found = await wifiList();
+        wifiNow = found.current;
+        return { type: 'networks', ...found };
+      }
+      case 'join': {
+        if (typeof request.ssid !== 'string' || typeof request.password !== 'string') return { type: 'refused', problem: 'A network needs a name.' };
+        try {
+          await wifiJoin(request.ssid, request.password);
+        } catch (err) {
+          return { type: 'joined', ok: false, problem: (err as Error).message };
+        } finally {
+          await refreshWifi();
+        }
+        return { type: 'joined', ok: true };
+      }
+      case 'claim':
+        // Reaching here means the conversation's key was right: for a device with an owner,
+        // that took its token. Handing the token over is what makes the first phone the owner.
+        if (!state.claimed) {
+          state.claimed = true;
+          save();
+        }
+        return { type: 'claimed', name: state.name, address: lanAddress(), token, relay: relayUrl ?? '' };
+      default:
+        return { type: 'refused', problem: 'Not something this device understands.' };
+    }
+  },
+}).then((on) => {
+  if (!on) return;
+  console.log('bluetooth: offering setup');
+  refreshWifi();
+  setInterval(refreshWifi, 60_000).unref();
+});
 
 wss.on('listening', () => {
   console.log(`toto-server on :${port}, data in ${dataDir}${relayUrl ? `, relay ${relayUrl}` : ''}`);

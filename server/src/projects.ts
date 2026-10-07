@@ -118,6 +118,26 @@ export async function setLan(user: string | undefined, allow: boolean) {
   if (user) await sh('sudo', ['-n', PRIV, allow ? 'allow-lan' : 'restrict-lan', user]);
 }
 
+/** The Wi-Fi networks in range, strongest first, and which one this device is on. */
+export async function wifiList(): Promise<{ list: { ssid: string; signal: number; secure: boolean }[]; current: string | null }> {
+  const { stdout } = await exec('sudo', ['-n', PRIV, 'wifi-list'], { timeout: 30_000 });
+  const best = new Map<string, { ssid: string; signal: number; secure: boolean }>();
+  let current: string | null = null;
+  for (const line of stdout.split('\n')) {
+    // IN-USE:SIGNAL:SECURITY:SSID, where a colon inside the name is written "\:".
+    const [inUse, signal, security, ...name] = line.split(/(?<!\\):/);
+    const ssid = name.join(':').replace(/\\(.)/g, '$1');
+    if (!ssid) continue; // hidden networks have no name to offer
+    if (inUse === '*') current = ssid;
+    const seen = best.get(ssid);
+    if (!seen || Number(signal) > seen.signal) best.set(ssid, { ssid, signal: Number(signal) || 0, secure: !!security && security !== '--' });
+  }
+  return { list: [...best.values()].sort((a, b) => b.signal - a.signal).slice(0, 20), current };
+}
+
+/** Joins a Wi-Fi network, keeping the one already configured to fall back on. Throws with the reason if it cannot. */
+export const wifiJoin = (ssid: string, password: string) => sh('sudo', ['-n', PRIV, 'wifi-join', ssid], {}, password + '\n');
+
 /** Deletes a project's files. When isolating that is its Linux user, along with anything still running as it. */
 export async function removeProject(id: string, user: string | undefined) {
   if (user) await sh('sudo', ['-n', PRIV, 'delete-user', user]);

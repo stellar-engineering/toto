@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
 import { Face } from '../face';
+import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
 import { color, font, gutter, size } from '../theme';
@@ -14,6 +15,13 @@ import { Screen, Txt } from '../ui';
 /** First run, or after forgetting the last Toto: tell the app where one is. */
 function Setup() {
   const [trying, setTrying] = useState(false);
+  const [nearby, setNearby] = useState(false);
+  if (nearby)
+    return (
+      <Screen bare>
+        <Nearby onCancel={() => setNearby(false)} />
+      </Screen>
+    );
   return (
     <Screen bare>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter }}>
@@ -22,7 +30,7 @@ function Setup() {
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
         </Txt>
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
-        <NodeForm onTrying={setTrying} />
+        <NodeForm onTrying={setTrying} onNearby={() => setNearby(true)} />
       </View>
     </Screen>
   );

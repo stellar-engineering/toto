@@ -51,6 +51,13 @@
           "imageWidth": 220,
           "backgroundColor": "#11140F"
         }
+      ],
+      [
+        "react-native-ble-manager",
+        {
+          "neverForLocation": true,
+          "bluetoothAlwaysPermission": "Toto uses Bluetooth to find and set up a Toto device nearby."
+        }
       ]
     ],
     "scheme": "toto",

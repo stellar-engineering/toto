@@ -4,7 +4,7 @@ import { DEFAULT_RELAY, useConnection } from './connection';
 import { Btn, Field, Txt } from './ui';
 
 /** The details needed to add a Toto. Used for the very first one and for every one after. */
-export function NodeForm({ onAdded, onCancel, onTrying }: { onAdded?: () => void; onCancel?: () => void; onTrying?: (trying: boolean) => void }) {
+export function NodeForm({ onAdded, onCancel, onTrying, onNearby }: { onAdded?: () => void; onCancel?: () => void; onTrying?: (trying: boolean) => void; onNearby?: () => void }) {
   const { addNode } = useConnection();
   // ponytail: typed in by hand once. Replaced by Bluetooth pairing and discovery in M2.
   // The environment values only prefill the first Toto in development; a second one starts blank.
@@ -29,6 +29,12 @@ export function NodeForm({ onAdded, onCancel, onTrying }: { onAdded?: () => void
 
   return (
     <View>
+      {onNearby && (
+        <View style={{ gap: 8, marginBottom: 20 }}>
+          <Btn label="Find a new Toto nearby" onPress={onNearby} />
+          <Txt tone="ghost" small>Uses Bluetooth to set up one that is not on your network yet. Or enter one by hand:</Txt>
+        </View>
+      )}
       <Field label="name" value={name} onChangeText={setName} placeholder="optional, like Workshop" autoCapitalize="words" />
       <Field label="address" value={address} onChangeText={setAddress} placeholder="ws://raspberrypi.local:7860" keyboardType="url" />
       <Field label="token" value={token} onChangeText={setToken} placeholder="printed when Toto was installed" secureTextEntry />

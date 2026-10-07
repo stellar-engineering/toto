@@ -1,8 +1,41 @@
 #!/bin/bash
-# The only things toto-server may run as root: create or delete a project's Linux user, and say
-# whether that user may reach the local network.
+# The only things toto-server may run as root: create or delete a project's Linux user, say
+# whether that user may reach the local network, and list or join Wi-Fi networks.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
+
+case "${1:-}" in
+  wifi-list)
+    # In use, signal, security, name; the name last because it is the field that may contain colons.
+    exec nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan auto
+    ;;
+  wifi-join)
+    # The network's name is the argument; its password, if it has one, arrives on stdin so that
+    # it never appears on a command line, where any user on the machine could read it.
+    ssid="${2:-}"
+    [ -n "$ssid" ] && [ "${#ssid}" -le 32 ] || { echo "toto-priv: bad network name" >&2; exit 2; }
+    IFS= read -r password || true
+    name="toto-$ssid"
+    nmcli connection delete id "$name" >/dev/null 2>&1 || true
+    # Alongside whatever is already configured, never instead of it: if this fails, the device
+    # goes back to the network it was on.
+    if [ -n "$password" ]; then
+      [ "${#password}" -ge 8 ] && [ "${#password}" -le 63 ] || { echo "A Wi-Fi password is 8 to 63 characters." >&2; exit 1; }
+      secret="$(mktemp)"
+      trap 'rm -f "$secret"' EXIT
+      printf '802-11-wireless-security.psk:%s\n' "$password" > "$secret"
+      nmcli connection add type wifi con-name "$name" ssid "$ssid" autoconnect yes -- wifi-sec.key-mgmt wpa-psk >/dev/null
+      nmcli --wait 45 connection up id "$name" passwd-file "$secret" >/dev/null 2>&1 && exit 0
+    else
+      nmcli connection add type wifi con-name "$name" ssid "$ssid" autoconnect yes >/dev/null
+      nmcli --wait 45 connection up id "$name" >/dev/null 2>&1 && exit 0
+    fi
+    nmcli connection delete id "$name" >/dev/null 2>&1 || true
+    nmcli device connect "$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2 == "wifi" { print $1; exit }')" >/dev/null 2>&1 || true
+    echo "Could not join that network. Check the password." >&2
+    exit 1
+    ;;
+esac
 
 [[ "${2:-}" =~ ^toto-p-[a-f0-9]{8}$ ]] || { echo "toto-priv: bad user name" >&2; exit 2; }
 

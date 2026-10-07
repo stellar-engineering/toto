@@ -56,3 +56,26 @@ test("the app's copy of secure.ts is identical", () => {
   if (!existsSync(app)) return; // an installed server has no app beside it
   assert.equal(readFileSync(app, 'utf8'), readFileSync(new URL('./secure.ts', import.meta.url), 'utf8'));
 });
+
+test('Bluetooth setup: two ends agree on a key nobody listening can work out', async () => {
+  const { publicKey, setupKey } = await import('./secure.ts');
+  const phone = new Uint8Array(32).fill(1);
+  const device = new Uint8Array(32).fill(2);
+  const stranger = new Uint8Array(32).fill(3);
+  const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+
+  const fromPhone = setupKey(phone, publicKey(device));
+  assert.equal(hex(fromPhone), hex(setupKey(device, publicKey(phone))));
+  assert.notEqual(hex(fromPhone), hex(setupKey(stranger, publicKey(device))));
+
+  // A device with an owner mixes in its token, so the right key exchange alone is not enough.
+  const owned = setupKey(device, publicKey(phone), psk);
+  assert.equal(hex(owned), hex(setupKey(phone, publicKey(device), psk)));
+  assert.notEqual(hex(owned), hex(fromPhone));
+  assert.notEqual(hex(owned), hex(setupKey(phone, publicKey(device), keysFromToken('wrong').psk)));
+
+  // And the key drives an ordinary session.
+  const a = session(owned, 'client', cn, dn);
+  const b = session(owned, 'device', cn, dn);
+  assert.equal(b.open(a.seal('wifi password')), 'wifi password');
+});

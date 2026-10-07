@@ -6,12 +6,16 @@
 // `data` frames sealed with ChaCha20-Poly1305 under a per-direction message counter. A frame that
 // is forged, replayed, reordered or from an earlier connection fails to open.
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { x25519 } from '@noble/curves/ed25519.js';
 import { bytesToHex, bytesToUtf8, concatBytes, hexToBytes, utf8ToBytes } from '@noble/ciphers/utils.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-/** What travels on the wire, as JSON. Byte strings are hex. */
-export type Frame = { t: 'hello'; n: string } | { t: 'data'; b: string };
+/**
+ * What travels on the wire, as JSON. Byte strings are hex. Over Bluetooth, where the two ends
+ * may share no secret yet, `hello` also carries a public key in `k`.
+ */
+export type Frame = { t: 'hello'; n: string; k?: string } | { t: 'data'; b: string };
 
 export const NONCE_BYTES = 16;
 
@@ -31,6 +35,24 @@ export function keysFromToken(token: string) {
     relayKey: bytesToHex(derive(secret, undefined, 'toto relay key', 32)),
     psk: derive(secret, undefined, 'toto e2e psk', 32),
   };
+}
+
+/** The public half, to send to the other end, of 32 random bytes kept as a secret key. */
+export const publicKey = (secret: Uint8Array) => bytesToHex(x25519.getPublicKey(secret));
+
+/**
+ * The shared secret for a Bluetooth setup conversation, which each end works out from its own
+ * secret key and the other's public one. Someone listening in learns neither.
+ *
+ * `known`, when given, is a secret both ends already hold. Mixing it in means a device that has
+ * an owner can only be talked to by someone with its token.
+ *
+ * ponytail: nothing proves whose public key arrived, so someone actively relaying between the
+ * two during a first setup could sit in the middle. A code shown on the device would close
+ * that; a Pi has nowhere to show one.
+ */
+export function setupKey(mySecret: Uint8Array, theirPublic: string, known?: Uint8Array): Uint8Array {
+  return derive(x25519.getSharedSecret(mySecret, hexToBytes(theirPublic)), known, 'toto ble setup', 32);
 }
 
 function channel(key: Uint8Array) {

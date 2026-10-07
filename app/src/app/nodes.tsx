@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Node } from '../connection';
 import { ping, type Route } from '../link';
+import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { Face } from '../face';
 import { Header, Screen, Txt, styles } from '../ui';
@@ -33,6 +34,7 @@ export default function Nodes() {
   const router = useRouter();
   const [reach, setReach] = useState<Record<string, Reach>>({});
   const [adding, setAdding] = useState(false);
+  const [nearby, setNearby] = useState(false);
 
   // The current Toto's state is already known from its live connection. The others are asked,
   // now and every so often, for as long as this screen is in front.
@@ -65,6 +67,15 @@ export default function Nodes() {
 
   const reachOf = (n: Node): Reach => (n.id === current?.id ? (status === 'open' ? via : 'offline') : (reach[n.id] ?? 'checking'));
 
+  if (nearby)
+    return (
+      <Screen bare>
+        <Stack.Screen options={{ animation: 'slide_from_left' }} />
+        <Header title="nearby" />
+        <Nearby onAdded={() => router.back()} onCancel={() => setNearby(false)} />
+      </Screen>
+    );
+
   return (
     <Screen bare>
       {/* The top of the hierarchy, so it has nothing above it to show, and arrives from the left as going up a level should. */}
@@ -88,7 +99,7 @@ export default function Nodes() {
         ListFooterComponent={
           adding ? (
             <View style={styles.form}>
-              <NodeForm onAdded={() => router.back()} onCancel={() => setAdding(false)} />
+              <NodeForm onAdded={() => router.back()} onCancel={() => setAdding(false)} onNearby={() => setNearby(true)} />
             </View>
           ) : (
             <Pressable onPress={() => setAdding(true)} style={styles.row} accessibilityRole="button">

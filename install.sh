@@ -11,13 +11,15 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   apt-get install -y nodejs
 fi
 # nftables for the nft tool only: its service, which would replace the whole firewall, is left off.
-apt-get install -y git sudo openssh-client tmux nftables
+apt-get install -y git sudo openssh-client tmux nftables bluez rfkill network-manager
 command -v claude >/dev/null || npm install -g @anthropic-ai/claude-code
 
 # The server runs unprivileged as `toto`. Each project gets its own user in `toto-projects`.
 id toto >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin toto
 getent group toto-projects >/dev/null || groupadd --system toto-projects
 install -d -o toto -g toto -m 700 /var/lib/toto
+# Bluetooth, for setting a new device up from a phone. A Pi ships with the radio switched off.
+rfkill unblock bluetooth 2>/dev/null || true
 
 install -d /opt/toto /opt/toto/bin
 install -m 755 "$src/bin/toto-priv" /opt/toto/bin/toto-priv
