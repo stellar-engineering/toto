@@ -2,9 +2,10 @@ import { IBMPlexMono_400Regular, IBMPlexMono_400Regular_Italic, IBMPlexMono_500M
 import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
+import { Face } from '../face';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
 import { color, font, gutter, size } from '../theme';
@@ -12,14 +13,16 @@ import { Screen, Txt } from '../ui';
 
 /** First run, or after forgetting the last Toto: tell the app where one is. */
 function Setup() {
+  const [trying, setTrying] = useState(false);
   return (
     <Screen bare>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter }}>
+        <Face mood={trying ? 'looking' : 'awake'} size={52} nose style={{ marginBottom: 28 }} />
         <Txt weight="bold" style={{ fontSize: size.display, lineHeight: size.display * 1.1, letterSpacing: -2 }} accessibilityRole="header">
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
         </Txt>
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
-        <NodeForm />
+        <NodeForm onTrying={setTrying} />
       </View>
     </Screen>
   );

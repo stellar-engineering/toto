@@ -4,7 +4,8 @@ import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Node } from '../connection';
 import { ping, type Route } from '../link';
 import { NodeForm } from '../nodeform';
-import { Header, Screen, Spinner, Txt, styles } from '../ui';
+import { Face } from '../face';
+import { Header, Screen, Txt, styles } from '../ui';
 
 const CHECK_EVERY = 15_000;
 type Reach = Route | 'offline' | 'checking';
@@ -14,8 +15,7 @@ function NodeRow({ node, reach, current, onPress }: { node: Node; reach: Reach; 
   const said = reach === 'checking' ? 'checking' : reach === 'offline' ? 'offline' : reach === 'relay' ? 'online, by relay' : 'online';
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${node.name}, ${said}${current ? ', showing now' : ''}`}>
-      {/* A fixed-width column, so names line up. */}
-      <View style={{ width: 14 }}>{reach === 'checking' ? <Spinner tone="ghost" /> : <Txt tone={online ? 'signal' : 'ghost'}>{online ? '●' : '○'}</Txt>}</View>
+      <View style={styles.faceCol}><Face mood={reach === 'checking' ? 'looking' : online ? 'awake' : 'offline'} size={13} /></View>
       <View style={{ flex: 1 }}>
         <Txt weight="bold" numberOfLines={1}>{node.name}</Txt>
         <Txt tone="ghost" small numberOfLines={1}>{node.address.replace(/^wss?:\/\//, '')}</Txt>

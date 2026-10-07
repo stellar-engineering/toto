@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  AccessibilityInfo,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnection } from './connection';
+import { Face, type Mood } from './face';
 import { color, font, gutter, size, tap } from './theme';
 
 type Tone = keyof typeof color;
@@ -61,21 +61,6 @@ export function Check({ label, value, onChange }: { label: string; value: boolea
   );
 }
 
-const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-/** Shows that something is running. Holds still for people who have asked for less motion. */
-export function Spinner({ tone = 'signal' }: { tone?: Tone }) {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
-      if (!reduce) timer = setInterval(() => setFrame((f) => (f + 1) % FRAMES.length), 90);
-    });
-    return () => clearInterval(timer);
-  }, []);
-  return <Txt tone={tone} accessibilityElementsHidden importantForAccessibility="no">{FRAMES[frame]}</Txt>;
-}
-
 /** The top line of a screen: where you are, the way back, and anything the screen adds on the right. */
 export function Header({ parent, title, right, onBack }: { parent?: string; title: string; right?: ReactNode; onBack?: () => void }) {
   const router = useRouter();
@@ -100,7 +85,7 @@ export function StatusLine() {
   const linked = status === 'open';
   return (
     <Pressable onPress={() => router.push('/device')} accessibilityRole="button" accessibilityLabel="Connection and device settings" style={[styles.status, { paddingBottom: bottom, minHeight: tap + bottom }]}>
-      {linked ? <Txt tone="signal" small>●</Txt> : <Spinner tone="amber" />}
+      <Face mood={!linked ? 'looking' : tally.waiting ? 'waiting' : tally.working ? 'working' : 'awake'} size={12} />
       <Txt small style={{ flex: 1 }}>{linked ? (via === 'relay' ? 'relay' : 'local network') : 'reconnecting'}</Txt>
       {tally.working > 0 && <Txt small tone="signal">{tally.working} working</Txt>}
       {tally.waiting > 0 && <Txt small tone="amber" weight="bold">{tally.waiting} waiting on you</Txt>}
@@ -133,6 +118,16 @@ export function Screen({ children, bare }: { children: ReactNode; bare?: boolean
 
 export const Rule = () => <View style={styles.rule} />;
 
+/** What a list or a conversation shows when there is nothing in it yet: Toto, and a line about what goes here. */
+export function Empty({ mood = 'awake', children }: { mood?: Mood; children: ReactNode }) {
+  return (
+    <View style={styles.empty}>
+      <Face mood={mood} size={34} nose />
+      <Txt tone="ghost" style={{ textAlign: 'center', maxWidth: 300 }}>{children}</Txt>
+    </View>
+  );
+}
+
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.tube },
   pad: { paddingHorizontal: gutter },
@@ -149,4 +144,7 @@ export const styles = StyleSheet.create({
   input: { flex: 1, color: color.phosphor, fontFamily: font.regular, fontSize: size.body, paddingVertical: 10 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: tap },
   form: { paddingHorizontal: gutter, paddingVertical: 12, gap: 4 },
+  empty: { alignItems: 'center', gap: 20, paddingHorizontal: gutter, paddingTop: 56, paddingBottom: 32 },
+  // The column a face sits in at the start of a row, so names line up down a list.
+  faceCol: { width: 52 },
 });

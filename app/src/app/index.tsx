@@ -2,7 +2,9 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Project } from '../connection';
-import { Btn, Field, Header, Screen, StatusLine, Txt, styles } from '../ui';
+import { Face } from '../face';
+import { moodOfMany } from '../moods';
+import { Btn, Empty, Field, Header, Screen, StatusLine, Txt, styles } from '../ui';
 
 function ProjectRow({ project }: { project: Project }) {
   const { agents, activity } = useConnection();
@@ -12,7 +14,10 @@ function ProjectRow({ project }: { project: Project }) {
   const waiting = count('waiting');
   const working = count('working');
   return (
-    <Pressable onPress={() => router.push({ pathname: '/project/[id]', params: { id: project.id } })} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+    <Pressable onPress={() => router.push({ pathname: '/project/[id]', params: { id: project.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center' }, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+      {/* One face for the project: whichever of its agents most needs attention sets it. */}
+      <View style={styles.faceCol}><Face mood={moodOfMany(mine.filter((a) => a.harness === 'claude').map((a) => activity[a.id] ?? 'idle'))} size={13} /></View>
+      <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Txt weight="bold" numberOfLines={1} style={{ flex: 1 }}>{project.name}</Txt>
           {waiting > 0 ? (
@@ -24,6 +29,7 @@ function ProjectRow({ project }: { project: Project }) {
           )}
         </View>
         <Txt tone="ghost" small numberOfLines={1}>{project.repo.replace(/^(https:\/\/|git@)/, '').replace(/\.git$/, '')}</Txt>
+      </View>
     </Pressable>
   );
 }
@@ -75,14 +81,11 @@ export default function Projects() {
           keyExtractor={(p) => p.id}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <ProjectRow project={item} />}
-          ListEmptyComponent={
-            <View style={styles.row}>
-              <Txt tone="ghost">No projects yet. A project is a git repo your agents work in.</Txt>
-            </View>
-          }
+          ListEmptyComponent={<Empty>No projects yet. A project is a git repo your agents work in.</Empty>}
           ListFooterComponent={
             busy ? (
-              <View style={styles.row}>
+              <View style={[styles.row, { flexDirection: 'row', alignItems: 'center' }]}>
+                <View style={styles.faceCol}><Face mood="working" size={13} /></View>
                 <Txt tone="ghost">Cloning…</Txt>
               </View>
             ) : (

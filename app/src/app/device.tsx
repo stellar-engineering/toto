@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Keyboard, ScrollView, Share, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useConnection, type Identity, type Node } from '../connection';
+import { Face } from '../face';
 import { gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt } from '../ui';
 
@@ -69,6 +70,9 @@ export default function Device() {
       <Header parent={settings?.name ?? 'toto'} title="settings" />
       <View style={{ flex: 1 }}>
         <ScrollView keyboardShouldPersistTaps="handled">
+          <View style={{ paddingHorizontal: gutter, paddingTop: 24 }}>
+            <Face mood={status === 'open' ? 'awake' : 'looking'} size={30} nose />
+          </View>
           <Section
             title={settings?.name ?? ''}
             about={

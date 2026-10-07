@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Toto's mark, drawn with the app's own typeface so the icons match the face in the app exactly.
+     Rendered to PNG by ../make-icons.sh; the part after # in the address picks which one. -->
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Plex; font-weight: 700; src: url('../../node_modules/@expo-google-fonts/ibm-plex-mono/700Bold/IBMPlexMono_700Bold.ttf'); }
+  html, body { margin: 0; width: 100vw; height: 100vh; }
+  body { display: grid; place-items: center; font-family: Plex; font-weight: 700; }
+  /* Sized in vw so one drawing serves every output size. Same proportions as src/face.tsx. */
+  /* Nudged down: the nose line is short, so the ink sits above the middle of its own box. */
+  .face { font-size: var(--size); line-height: 1.25; text-align: center; white-space: pre; color: var(--ink); transform: translateY(0.15em); }
+  .nose { display: block; margin-top: -0.5em; color: var(--nose); }
+</style>
+<body><div class="face">/o o\<span class="nose">&bull;</span></div></body>
+<script>
+  // background, size of the characters, their colour, the nose's colour
+  const KINDS = {
+    icon: ['#11140F', '20.5vw', '#ECE6D2', '#FFB000'], // the full square, for iOS and stores
+    foreground: ['transparent', '14.5vw', '#ECE6D2', '#FFB000'], // Android crops to the middle two thirds
+    monochrome: ['transparent', '14.5vw', '#FFFFFF', '#FFFFFF'], // Android themed icons: one colour
+    splash: ['transparent', '20.5vw', '#ECE6D2', '#FFB000'],
+    notification: ['transparent', '25vw', '#FFFFFF', '#FFFFFF'], // Android status bar: white on clear
+    favicon: ['#11140F', '22vw', '#ECE6D2', '#FFB000'],
+  };
+  const [bg, size, ink, nose] = KINDS[location.hash.slice(1)] ?? KINDS.icon;
+  document.body.style.background = bg;
+  const s = document.querySelector('.face').style;
+  s.setProperty('--size', size); s.setProperty('--ink', ink); s.setProperty('--nose', nose);
+</script>

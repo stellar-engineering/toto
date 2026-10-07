@@ -6,7 +6,8 @@ import { useConnection, type AgentEvent } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
-import { Btn, Header, Screen, Spinner, Txt, styles as ui } from '../../ui';
+import { Face } from '../../face';
+import { Btn, Empty, Header, Screen, Txt, styles as ui } from '../../ui';
 
 const NO_EVENTS: AgentEvent[] = [];
 
@@ -60,7 +61,10 @@ function ToolRow({ row, onDecide }: { row: Extract<Row, { kind: 'tool' }>; onDec
   if (row.decision === 'waiting')
     return (
       <View style={local.ask} accessibilityLiveRegion="polite">
-        <Txt tone="tube" weight="bold">Allow {row.name}?</Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Face mood="waiting" size={15} ink={color.tube} />
+          <Txt tone="tube" weight="bold" style={{ flex: 1 }}>Allow {row.name}?</Txt>
+        </View>
         <Txt tone="tube" style={{ marginTop: 4 }}>{what || JSON.stringify(row.input)}</Txt>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
           <Pressable onPress={() => onDecide(true)} accessibilityRole="button" accessibilityLabel={`Allow ${row.name}`} style={({ pressed }) => [local.askBtn, { backgroundColor: color.tube, flex: 1 }, pressed && { opacity: 0.7 }]}>
@@ -114,7 +118,7 @@ function Chat({ agentId }: { agentId: string }) {
 
   return (
     <View style={{ flex: 1 }}>
-      {rows.length === 0 && <Txt tone="ghost" style={[ui.pad, { paddingTop: 12 }]}>Nothing yet. Tell this agent what to do.</Txt>}
+      {rows.length === 0 && <Empty>Nothing yet. Tell this agent what to do.</Empty>}
       <FlatList
         inverted
         data={rows}
@@ -139,11 +143,14 @@ function Chat({ agentId }: { agentId: string }) {
         // The header of an inverted list sits at the bottom, under the newest message.
         ListHeaderComponent={
           !online ? (
-            <Txt tone="amber" style={local.text}>Reconnecting to your Toto…</Txt>
+            <View style={[local.user, { paddingTop: 4, alignItems: 'center' }]}>
+              <Face mood="looking" size={13} />
+              <Txt tone="amber">Reconnecting to your Toto…</Txt>
+            </View>
           ) : state === 'working' ? (
             <View style={[local.user, { paddingTop: 4 }]} accessibilityLabel="Working" accessibilityLiveRegion="polite">
-              <Spinner />
-              <Txt tone="ghost">working</Txt>
+              {/* The dots that count along beside the face do the job the word used to. */}
+              <Face mood="working" size={13} trail />
             </View>
           ) : null
         }

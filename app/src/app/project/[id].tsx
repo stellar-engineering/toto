@@ -2,7 +2,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Activity, type Agent } from '../../connection';
-import { Btn, Check, Field, Header, Screen, Spinner, StatusLine, Txt, styles } from '../../ui';
+import { Face } from '../../face';
+import { moodOf } from '../../moods';
+import { Btn, Check, Empty, Field, Header, Screen, StatusLine, Txt, styles } from '../../ui';
 
 const STATE: Record<Activity, { glyph: string; tone: 'ghost' | 'signal' | 'amber' | 'raspberry'; label: string }> = {
   idle: { glyph: '○', tone: 'ghost', label: 'idle' },
@@ -18,8 +20,8 @@ function AgentRow({ agent }: { agent: Agent }) {
   const terminal = agent.harness === 'terminal';
   return (
     <Pressable onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })} style={({ pressed }) => [styles.row, { flexDirection: 'row', alignItems: 'center', gap: 12 }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${agent.name}, ${terminal ? 'terminal' : state.label}`}>
-        {/* A fixed-width column, so names line up like a process list. */}
-        <View style={{ width: 14 }}>{!terminal && state.label === 'working' ? <Spinner /> : <Txt tone={terminal ? 'ghost' : state.tone}>{terminal ? '$' : state.glyph}</Txt>}</View>
+        {/* A fixed-width column, so names line up like a process list. A terminal is you, not Toto, so it gets a prompt. */}
+        <View style={styles.faceCol}>{terminal ? <Txt tone="ghost" weight="bold">  $</Txt> : <Face mood={moodOf(activity[agent.id] ?? 'idle')} size={13} />}</View>
         <View style={{ flex: 1 }}>
           <Txt weight="bold" numberOfLines={1}>{agent.name}</Txt>
           <Txt tone="ghost" small>{agent.worktree ? 'own branch' : 'main checkout'}</Txt>
@@ -90,11 +92,7 @@ export default function ProjectScreen() {
           keyExtractor={(a) => a.id}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <AgentRow agent={item} />}
-          ListEmptyComponent={
-            <View style={styles.row}>
-              <Txt tone="ghost">Nobody is working here yet.</Txt>
-            </View>
-          }
+          ListEmptyComponent={<Empty mood="resting">Nobody is working here yet. Start an agent and give it something to do.</Empty>}
           ListFooterComponent={
             <>
               <StartAgent projectId={id} />

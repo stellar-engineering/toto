@@ -54,3 +54,38 @@ test('works out keystrokes from how a text field changed', { skip }, () => {
   assert.deepEqual(typed('xx', 'xx’“—…'), { backspaces: 0, text: `'"--...` }); // smart punctuation undone
   assert.deepEqual(typed('abc', 'abc'), { backspaces: 0, text: '' });
 });
+
+const moods = new URL('../../app/src/moods.ts', import.meta.url);
+const { FRAMES, compact, moodOf, moodOfMany } = skip ? ({} as any) : await import(moods.href);
+
+test("Toto's face: every frame is five characters, and a nose", { skip }, () => {
+  for (const [mood, frames] of Object.entries(FRAMES) as [string, any[]][]) {
+    assert.ok(frames.length > 0, mood);
+    for (const frame of frames) {
+      assert.equal(frame.face.length, 5, `${mood}: "${frame.face}"`);
+      assert.equal([...frame.nose].length, 1, `${mood}: nose "${frame.nose}"`);
+      assert.ok(frames.length === 1 || frame.ms > 0, `${mood}: a moving face needs a time on every frame`);
+    }
+  }
+});
+
+test("Toto's face: the one-line version drops the extras and joins what then repeats", { skip }, () => {
+  const working = compact(FRAMES.working);
+  assert.ok(working.every((frame: any) => frame.extra === ''));
+  // Two frames of open eyes with dots counting become one long one.
+  assert.deepEqual(working.map((frame: any) => [frame.face, frame.ms]), [['/o o\\', 1000], ['/. .\\', 500], ['/o o\\', 500], ['/- -\\', 140]]);
+  // Resting is the same shut eyes throughout, so it holds still.
+  assert.equal(compact(FRAMES.resting).length, 1);
+  // The total time is kept.
+  const total = (frames: any[]) => frames.reduce((sum, frame) => sum + frame.ms, 0);
+  assert.equal(total(compact(FRAMES.awake)), total(FRAMES.awake));
+});
+
+test("Toto's face: the most pressing agent sets the mood for a group", { skip }, () => {
+  assert.equal(moodOf('idle'), 'resting');
+  assert.equal(moodOf('waiting'), 'waiting');
+  assert.equal(moodOfMany([]), 'resting');
+  assert.equal(moodOfMany(['idle', 'working']), 'working');
+  assert.equal(moodOfMany(['working', 'failed']), 'failed');
+  assert.equal(moodOfMany(['failed', 'waiting', 'working']), 'waiting');
+});
