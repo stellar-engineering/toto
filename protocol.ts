@@ -98,6 +98,9 @@ export type Plugin = {
   paste?: { url: string; help: string };
 };
 
+/** What a long job on the device (an update, a plugin install) is doing: `task` is 'update' or 'plugin:<name>'. `failed` when it ended badly. */
+export type Progress = { task: string; text: string; step?: number; of?: number; failed?: boolean };
+
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
 
 /** Who agents' git commits are attributed to. */
@@ -125,6 +128,8 @@ export type ServerMessage =
       owner: boolean;
       /** Absent from a Toto that predates plugins. */
       plugins?: Plugin[];
+      /** A job under way, or one that failed in the last few minutes. */
+      progress?: Progress;
     }
   // The answer to `share`: an invitation for one other phone, to hand over out of band (a QR code).
   // It works once, until `expires`, and only to collect that phone's own key.

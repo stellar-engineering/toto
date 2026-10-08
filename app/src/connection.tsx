@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Identity, ImageRef, Phone, Plugin, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Identity, ImageRef, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -10,7 +10,7 @@ import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Mode, Plugin, Project, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Mode, Plugin, Progress, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -69,6 +69,8 @@ type Connection = {
   software?: { version: string; latest?: string; updating: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
+  /** A job the Toto is doing (an update, a plugin install), or one that failed lately. */
+  progress?: Progress;
   /** What can be added to this Toto, and what has been. Undefined on a Toto too old to have plugins. */
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
@@ -116,6 +118,9 @@ export const useConnection = () => {
   if (!value) throw new Error('useConnection outside ConnectionProvider');
   return value;
 };
+
+/** One line saying what a job is doing and how far it has got. */
+export const progressText = (p: Progress) => `${p.text}${p.step && p.of ? ` (${p.step} of ${p.of})` : ''}`;
 
 export function activityOf(events: AgentEvent[]): Activity {
   let state: Activity = 'idle';
@@ -177,6 +182,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [claude, setClaude] = useState<ClaudeAccount>();
   const [claudeLogin, setClaudeLogin] = useState<string>();
   const [plugins, setPlugins] = useState<Plugin[]>();
+  const [progress, setProgress] = useState<Progress>();
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
@@ -227,6 +233,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           return msg.claude;
         });
         setPlugins(msg.plugins);
+        setProgress(msg.progress);
         // A sign-in that finished, or whose plugin has gone, is over.
         setPluginLogin((was) => {
           const now = was && msg.plugins?.find((p) => p.name === was.name);
@@ -362,6 +369,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setClaude(undefined);
     setClaudeLogin(undefined);
     setPlugins(undefined);
+    setProgress(undefined);
     setPluginLogin(undefined);
     setSoftware(undefined);
     setPhones(undefined);
@@ -495,7 +503,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );

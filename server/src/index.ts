@@ -12,6 +12,7 @@ import { type Screen, killTerminal, openTerminal, watchTerminal } from './termin
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
+import { readProgress } from './progress.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
@@ -128,6 +129,32 @@ const version: string = JSON.parse(readFileSync(new URL('../package.json', impor
 const RELEASES = 'https://github.com/stellar-engineering/toto/releases/latest/download';
 let latest: string | undefined;
 let updating = false;
+// What a root job (an update, a plugin install) says it is doing. An update restarts this server in
+// the middle of itself, so whatever is under way when we start is followed from there.
+let progress: ReturnType<typeof readProgress>['shown'];
+let following: ReturnType<typeof setInterval> | undefined;
+/** Starts watching. A job takes a moment to write its first word, so an empty answer is not believed for `grace` ms. */
+function follow(grace = 5000) {
+  if (following) return;
+  const began = Date.now();
+  const look = () => {
+    const now = readProgress();
+    if (JSON.stringify(now.shown) !== JSON.stringify(progress)) {
+      progress = now.shown;
+      broadcast(snapshot());
+    }
+    if (now.active || Date.now() - began < grace) return;
+    clearInterval(following);
+    following = undefined;
+    // Over: if it was an update that failed, this server is the old one, still here.
+    if (updating) {
+      updating = false;
+      broadcast(snapshot());
+    }
+  };
+  following = setInterval(look, 1000);
+  look();
+}
 // What the relay lists as plugins; only a hint, like `latest`.
 let offered: Awaited<ReturnType<typeof listed>> = [];
 async function checkForUpdate() {
@@ -153,6 +180,7 @@ const snapshot = (): ServerMessage => ({
   version,
   latest: latest === version ? undefined : latest,
   updating,
+  progress,
   phones: livePhones().map(({ id, name, added, invite }) => ({ id, name, added, pending: !!invite })),
   // Each client is told the truth about itself as its copy is sent (see accept).
   owner: true,
@@ -521,7 +549,9 @@ async function handle(msg: ClientMessage, ws: Client) {
     case 'plugin_install':
       if (ws.phone) throw new Error('Only the phone that set this Toto up can change its plugins.');
       if (!isPluginName(msg.name)) throw new Error('That is not a plugin name.');
+      follow();
       await installPlugin(msg.name);
+      progress = undefined;
       return refreshAgents();
     case 'plugin_remove': {
       const { name, login } = installedPlugin(ws, msg.name);
@@ -559,6 +589,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       // The install restarts the server, which would cut off anything mid-thought.
       if (thinking.size) throw new Error('Agents are working. Update when they have finished.');
       updating = true;
+      follow();
       broadcast(snapshot());
       try {
         await startUpdate();
@@ -846,4 +877,9 @@ wss.on('listening', () => {
 // Look for a release now and once a day, so a Toto the relay never reaches still finds out.
 void checkForUpdate();
 void checkForPlugins();
+// An update that was under way when this server started is still going.
+if (readProgress().active) {
+  updating = readProgress().shown?.task === 'update';
+  follow(0);
+}
 setInterval(checkForUpdate, 24 * 60 * 60_000).unref();

@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { createPublicKey, verify } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { track } from './toto-progress.mjs';
 
 const HOME = '/opt/toto';
 const NEXT = '/opt/toto-next';
@@ -52,10 +53,13 @@ async function download(name) {
 }
 
 /** Downloads the latest release, and unpacks it only if it is signed and newer. Returns its version. */
-async function fetchAndCheck() {
+async function fetchAndCheck(steps) {
+  steps.next('Downloading the update');
   const [bundle, signature] = await Promise.all([download('toto.tar.gz'), download('toto.tar.gz.sig')]);
+  steps.next('Checking its signature');
   if (!signedBy(readFileSync(`${HOME}/release.pub`), bundle, signature)) throw new Error("The update is not signed with Toto's release key. Nothing was changed.");
   // Only now is anything in it believed, including the version it says it is.
+  steps.next('Unpacking it');
   remove(NEXT);
   mkdirSync(NEXT, { mode: 0o700 });
   writeFileSync(`${NEXT}.tar.gz`, bundle, { mode: 0o600 });
@@ -70,11 +74,15 @@ async function fetchAndCheck() {
   return offered;
 }
 
-function install() {
+async function install() {
+  // The fetch before this was another process, with the first three steps.
+  const steps = track('update', 5, 3);
+  steps.next('Installing');
   remove(PREVIOUS);
   run('cp', ['-a', HOME, PREVIOUS]);
   try {
-    run('bash', [`${NEXT}/install.sh`], { DEBIAN_FRONTEND: 'noninteractive' });
+    await steps.run('Installing', 'bash', [`${NEXT}/install.sh`], { DEBIAN_FRONTEND: 'noninteractive' });
+    steps.next('Checking the new version starts');
     // The installer restarts the server. Give it time to fall over if it is going to: a server
     // that keeps crashing is "active" for a moment each time systemd starts it again, so being
     // up is not enough. It must also not have been restarted in the meantime.
@@ -85,6 +93,7 @@ function install() {
     if (restarts() !== before) throw new Error('the new version keeps stopping');
   } catch (err) {
     console.error(`The update did not take (${err.message}). Putting ${versionIn(PREVIOUS)} back.`);
+    steps.fail(`The update did not take: ${err.message}. Version ${versionIn(PREVIOUS)} was put back.`);
     remove(HOME);
     renameSync(PREVIOUS, HOME);
     remove(NEXT);
@@ -94,19 +103,23 @@ function install() {
   remove(NEXT);
   // ponytail: the previous version is kept but only put back automatically, straight after an
   // update. Add a `toto rollback` if a release ever starts fine and misbehaves later.
+  steps.done(`Updated to ${versionIn(HOME)}.`);
   console.log(`Updated to ${versionIn(HOME)}.`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const steps = track('update', 5);
   try {
-    if (process.argv[2] === 'install') install();
+    if (process.argv[2] === 'install') await install();
     else {
-      const version = await fetchAndCheck();
+      const version = await fetchAndCheck(steps);
       // Its own unit, not a child of the server: the install restarts the server, and must outlive it.
       run('systemd-run', ['--unit', 'toto-update', '--collect', '--quiet', '/usr/bin/node', `${HOME}/bin/toto-update.mjs`, 'install']);
       console.log(version);
     }
   } catch (err) {
+    // Nothing was installed. The person is told by the server, which asked for this.
+    steps.done(err.message);
     console.error(err.message);
     process.exit(1);
   }

@@ -1,13 +1,13 @@
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, ScrollView, View } from 'react-native';
-import { useConnection, type Plugin } from '../connection';
+import { progressText, useConnection, type Plugin } from '../connection';
 import { gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 /** What can be added to this Toto for its agents to use, and signing in to the ones that need it. */
 export default function PluginsScreen() {
-  const { node, plugins, pluginLogin, request, busy, pending, status, owner, loaded } = useConnection();
+  const { node, plugins, progress, pluginLogin, request, busy, pending, status, owner, loaded } = useConnection();
   const online = status === 'open';
   // The plugin whose token is being pasted, and what has been pasted so far.
   const [pasting, setPasting] = useState<string>();
@@ -25,6 +25,8 @@ export default function PluginsScreen() {
     const now = pending as { type: string; name?: string } | undefined;
     return now?.type === type && now.name === name;
   };
+  // Installing is over when the Toto says so, not when it first says anything: it reports as it goes.
+  const installing = (p: Plugin) => doing('plugin_install', p.name) || (progress?.task === `plugin:${p.name}` && !progress.failed);
   const remove = (p: Plugin) =>
     Alert.alert(`Remove ${p.name}?`, 'Agents on this Toto stop being able to use it, and any sign-in for it is forgotten.', [
       { text: 'Cancel', style: 'cancel' },
@@ -91,9 +93,9 @@ export default function PluginsScreen() {
                       {!p.version || p.latest ? (
                         <Btn
                           kind={p.version ? 'plain' : 'primary'}
-                          label={doing('plugin_install', p.name) ? (p.version ? 'Updating…' : 'Installing…') : p.version ? 'Update' : 'Install'}
+                          label={installing(p) ? (p.version ? 'Updating…' : 'Installing…') : p.version ? 'Update' : 'Install'}
                           onPress={() => request({ type: 'plugin_install', name: p.name })}
-                          busy={doing('plugin_install', p.name)}
+                          busy={installing(p)}
                           disabled={busy || !online}
                         />
                       ) : null}
@@ -105,7 +107,11 @@ export default function PluginsScreen() {
                     </View>
                   )
                 )}
-                {doing('plugin_install', p.name) && <Txt tone="ghost" small>Your Toto is fetching and checking it. This can take a minute or two.</Txt>}
+                {installing(p) && (
+                  <Txt tone="ghost" small>
+                    {progress?.task === `plugin:${p.name}` && !progress.failed ? progressText(progress) : 'Your Toto is fetching and checking it.'} This can take a minute or two.
+                  </Txt>
+                )}
               </View>
             ))}
           </>

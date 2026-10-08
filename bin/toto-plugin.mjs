@@ -13,6 +13,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { track } from './toto-progress.mjs';
 import { newer, signedBy } from './toto-update.mjs';
 
 const PLUGINS = process.env.TOTO_PLUGINS ?? 'https://toto.royletron.dev/plugins';
@@ -59,7 +60,7 @@ export function checkManifest(m, name) {
  * Installs a bundle into `dir/<name>` if it is signed with `publicKey` and is the plugin asked for,
  * and newer than any already there. `apt` and `npm` install the packages its manifest lists. Returns the version.
  */
-export function install(name, bundle, signature, { publicKey, dir = DIR, apt, npm }) {
+export async function install(name, bundle, signature, { publicKey, dir = DIR, apt, npm, steps = { next() {} } }) {
   if (!isName(name)) throw new Error('That is not a plugin name.');
   if (!signedBy(publicKey, bundle, signature)) throw new Error("The plugin is not signed with Toto's plugin key. Nothing was installed.");
   // Only now is anything in it believed, including what it says it is.
@@ -75,8 +76,10 @@ export function install(name, bundle, signature, { publicKey, dir = DIR, apt, np
     const have = existsSync(`${dir}/${name}/manifest.json`) ? JSON.parse(readFileSync(`${dir}/${name}/manifest.json`, 'utf8')).version : undefined;
     // Newer only: an old bundle is validly signed too, and must not bring back a fixed flaw.
     if (have && !newer(manifest.version, have)) throw new Error(`${name} ${have} is already installed.`);
-    if (manifest.apt?.length) apt(manifest.apt);
-    if (manifest.npm?.length) npm(manifest.npm);
+    if (manifest.apt?.length || manifest.npm?.length) steps.next('Installing packages');
+    if (manifest.apt?.length) await apt(manifest.apt);
+    if (manifest.npm?.length) await npm(manifest.npm);
+    steps.next('Putting it in place');
     rmSync(`${dir}/${name}`, { recursive: true, force: true });
     renameSync(staged, `${dir}/${name}`);
     return manifest.version;
@@ -85,11 +88,11 @@ export function install(name, bundle, signature, { publicKey, dir = DIR, apt, np
   }
 }
 
-const aptInstall = (packages) =>
-  execFileSync('apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], { stdio: 'inherit', env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' } });
+const aptInstall = (steps) => (packages) =>
+  steps.run('Installing packages', 'apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], { DEBIAN_FRONTEND: 'noninteractive' });
 
 // Without install scripts: they would run as root, and are not covered by the plugin's signature.
-const npmInstall = (packages) => execFileSync('npm', ['install', '-g', '--ignore-scripts', '--no-audit', '--no-fund', '--', ...packages], { stdio: 'inherit' });
+const npmInstall = (steps) => (packages) => steps.run('Installing packages', 'npm', ['install', '-g', '--ignore-scripts', '--no-audit', '--no-fund', '--', ...packages]);
 
 async function download(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(120_000) }).catch(() => undefined);
@@ -100,17 +103,25 @@ async function download(url) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  let steps;
   try {
     const [verb, name] = process.argv.slice(2);
+    steps = track(`plugin:${name}`, 4);
     if (!isName(name)) throw new Error('usage: toto-plugin.mjs install|remove <name>');
     if (verb === 'install') {
+      steps.next('Downloading it');
       const [bundle, signature] = await Promise.all([download(`${PLUGINS}/${name}.tar.gz`), download(`${PLUGINS}/${name}.tar.gz.sig`)]);
-      console.log(install(name, bundle, signature, { publicKey: readFileSync('/opt/toto/plugin.pub'), apt: aptInstall, npm: npmInstall }));
+      steps.next('Checking it');
+      const version = await install(name, bundle, signature, { publicKey: readFileSync('/opt/toto/plugin.pub'), apt: aptInstall(steps), npm: npmInstall(steps), steps });
+      steps.done(`Installed ${name} ${version}.`);
+      console.log(version);
     } else if (verb === 'remove') {
       // ponytail: the packages it installed stay, as another plugin or the person may use them.
       rmSync(`${DIR}/${name}`, { recursive: true, force: true });
     } else throw new Error('usage: toto-plugin.mjs install|remove <name>');
   } catch (err) {
+    // The person is told why by the server, which asked for this; this only clears what was showing.
+    steps?.done(err.message);
     console.error(err.message);
     process.exit(1);
   }

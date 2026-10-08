@@ -28,33 +28,33 @@ const target = () => {
   return { dir, installed, deps: { publicKey, dir, apt: (p) => installed.push(...p), npm: (p) => installed.push(...p) } };
 };
 
-test('a plugin signed with the plugin key is installed, and its packages asked for', () => {
+test('a plugin signed with the plugin key is installed, and its packages asked for', async () => {
   const { dir, installed, deps } = target();
   const { tgz, sig } = bundle({ 'manifest.json': manifest(), 'skills/gh/SKILL.md': 'use gh' });
-  assert.equal(install('gh', tgz, sig, deps), '1.0.0');
+  assert.equal(await install('gh', tgz, sig, deps), '1.0.0');
   assert.deepEqual(installed, ['gh']);
   assert.equal(readFileSync(`${dir}/gh/skills/gh/SKILL.md`, 'utf8'), 'use gh');
 });
 
-test('a plugin that is not signed by the plugin key, or was altered, installs nothing', () => {
+test('a plugin that is not signed by the plugin key, or was altered, installs nothing', async () => {
   const { dir, installed, deps } = target();
   const theirs = generateKeyPairSync('ed25519');
   const forged = bundle({ 'manifest.json': manifest() }, theirs.privateKey);
-  assert.throws(() => install('gh', forged.tgz, forged.sig, deps), /not signed/);
+  await assert.rejects(install('gh', forged.tgz, forged.sig, deps), /not signed/);
   const real = bundle({ 'manifest.json': manifest() });
-  assert.throws(() => install('gh', Buffer.concat([real.tgz, Buffer.from('x')]), real.sig, deps), /not signed/);
+  await assert.rejects(install('gh', Buffer.concat([real.tgz, Buffer.from('x')]), real.sig, deps), /not signed/);
   assert.deepEqual(installed, []);
   assert.ok(!existsSync(`${dir}/gh`));
 });
 
-test('a signed bundle for a different plugin is refused, and so is an older version', () => {
+test('a signed bundle for a different plugin is refused, and so is an older version', async () => {
   const { installed, deps } = target();
   const other = bundle({ 'manifest.json': manifest({ name: 'other' }) });
-  assert.throws(() => install('gh', other.tgz, other.sig, deps), /not the gh plugin/);
+  await assert.rejects(install('gh', other.tgz, other.sig, deps), /not the gh plugin/);
   const v2 = bundle({ 'manifest.json': manifest({ version: '2.0.0' }) });
-  install('gh', v2.tgz, v2.sig, deps);
+  await install('gh', v2.tgz, v2.sig, deps);
   const v1 = bundle({ 'manifest.json': manifest() });
-  assert.throws(() => install('gh', v1.tgz, v1.sig, deps), /already installed/);
+  await assert.rejects(install('gh', v1.tgz, v1.sig, deps), /already installed/);
   assert.deepEqual(installed, ['gh']);
 });
 
@@ -84,9 +84,11 @@ test('npm packages must be one exact version, and the wrangler plugin is accepte
   assert.ok(!isLogin({ ...wrangler.login, run: ['wrangler'] }));
 });
 
-test('a plugin that lists npm packages has them installed', () => {
+test('a plugin that lists npm packages has them installed, and says where it is up to', async () => {
   const { installed, deps } = target();
   const { tgz, sig } = bundle({ 'manifest.json': manifest({ apt: undefined, npm: ['wrangler@4.149.0'] }) });
-  install('gh', tgz, sig, deps);
+  const said = [];
+  await install('gh', tgz, sig, { ...deps, steps: { next: (text) => said.push(text) } });
   assert.deepEqual(installed, ['wrangler@4.149.0']);
+  assert.deepEqual(said, ['Installing packages', 'Putting it in place']);
 });

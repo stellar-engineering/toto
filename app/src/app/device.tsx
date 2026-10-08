@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useConnection, type Identity, type Node, type Phone } from '../connection';
+import { progressText, useConnection, type Identity, type Node, type Phone } from '../connection';
 import { DEMO } from '../demo';
 import { Face } from '../face';
 import { inviteLink } from '../invite';
@@ -118,7 +118,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, progress, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -200,10 +200,12 @@ export default function Device() {
               title="Software"
               about={
                 software.updating
-                  ? 'Updating. Your Toto restarts when it is done, which takes a few minutes.'
-                  : software.latest
-                    ? `Version ${software.version}. Version ${software.latest} is available.`
-                    : `Version ${software.version}. Up to date.`
+                  ? `Updating. ${progress?.task === 'update' ? progressText(progress) + '. ' : ''}Your Toto restarts when it is done, which takes a few minutes.`
+                  : progress?.task === 'update' && progress.failed
+                    ? `${progress.text} It is still on version ${software.version}.`
+                    : software.latest
+                      ? `Version ${software.version}. Version ${software.latest} is available.`
+                      : `Version ${software.version}. Up to date.`
               }>
               {software.latest ? (
                 <Btn kind="primary" label={software.updating ? 'Updating…' : pending?.type === 'update' ? 'Downloading and checking…' : `Update to ${software.latest}`} onPress={update} busy={software.updating || pending?.type === 'update'} disabled={busy || status !== 'open'} />
