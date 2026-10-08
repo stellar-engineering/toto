@@ -13,7 +13,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "NSLocalNetworkUsageDescription": "Toto connects to your Toto device on your home network."
+        "NSLocalNetworkUsageDescription": "Toto connects to your Toto device on your home network.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

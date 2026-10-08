@@ -47,7 +47,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:ios": "PATH=\"/usr/bin:$PATH\" npx eas-cli@latest build --platform ios --profile production --local"
   },
   "private": true
 }

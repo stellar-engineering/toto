@@ -97,7 +97,8 @@ Both stores ask what the app collects. The honest answers:
 
 ## Export compliance (App Store)
 
-The app uses encryption beyond what the operating system provides: its own end-to-end
-encryption with standard, published algorithms (X25519, HKDF-SHA256, ChaCha20-Poly1305). The
-answer to "Does your app use encryption?" is yes. Which exemption applies, and whether an
-annual self-classification report is owed, is for whoever submits the app to declare.
+The app encrypts what it sends end to end, with standard, published algorithms (X25519,
+HKDF-SHA256, ChaCha20-Poly1305). It is declared as using only exempt encryption:
+`ITSAppUsesNonExemptEncryption` is `false` in `app/app.json`, so App Store Connect does not ask
+again with each build. That declaration was made by the person who submits the app, and is
+theirs to revisit if the encryption changes or the rules do.
