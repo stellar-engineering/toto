@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type StyleProp,
   type TextInputProps,
   type TextProps,
@@ -130,9 +131,11 @@ export function Check({ label, value, onChange }: { label: string; value: boolea
 /** The top line of a screen: where you are, the way back, and anything the screen adds on the right. */
 export function Header({ parent, title, right, onBack }: { parent?: string; title: string; right?: ReactNode; onBack?: () => void }) {
   const router = useRouter();
+  const wide = useWide();
   return (
     <View style={styles.header}>
-      {parent !== undefined && (
+      {/* Beside the sidebar there is no "back": where you are in the Toto is on show down the left. */}
+      {parent !== undefined && !wide && (
         <Pressable onPress={onBack ?? (() => router.back())} accessibilityRole="button" accessibilityLabel={`Go to ${parent}`} hitSlop={12} style={styles.back}>
           <Txt tone="ghost" numberOfLines={1}>{`‹ ${parent} /`}</Txt>
         </Pressable>
@@ -143,8 +146,24 @@ export function Header({ parent, title, right, onBack }: { parent?: string; titl
   );
 }
 
-/** The bottom line of the list screens: how we are reaching the Toto, and who needs attention. */
-export function StatusLine() {
+/** Wide enough, in a browser, for the sidebar: everything on the Toto down the left and a screen beside it. */
+export function useWide() {
+  const { width } = useWindowDimensions();
+  return Platform.OS === 'web' && width >= 900;
+}
+
+/**
+ * The bottom line of the list screens: how we are reaching the Toto, and who needs attention.
+ * On a wide screen the sidebar carries it (`always`), and the screens beside it leave it out.
+ */
+export function StatusLine({ always }: { always?: boolean }) {
+  const wide = useWide();
+  if (wide && !always) return null;
+  return <StatusBar brief={wide} />;
+}
+
+/** `brief` leaves the counts out: in the sidebar, each agent's state is already beside its name. */
+function StatusBar({ brief }: { brief: boolean }) {
   const router = useRouter();
   const { status, via, tally, trying } = useConnection();
   const { bottom } = useSafeAreaInsets();
@@ -154,8 +173,8 @@ export function StatusLine() {
     <Pressable onPress={() => router.push('/device')} accessibilityRole="button" accessibilityLabel="Connection and device settings" style={[styles.status, { paddingBottom: bottom, minHeight: tap + bottom }]}>
       <Face mood={!linked ? 'looking' : tally.waiting ? 'waiting' : tally.working ? 'working' : 'awake'} size={12} />
       <Txt small tone={linked ? 'phosphor' : 'amber'} style={{ flex: 1 }}>{linked ? (via === 'relay' ? 'relay' : 'local network') : reaching}</Txt>
-      {tally.working > 0 && <Txt small tone="signal">{tally.working} working</Txt>}
-      {tally.waiting > 0 && <Txt small tone="amber" weight="bold">{tally.waiting} waiting on you</Txt>}
+      {!brief && tally.working > 0 && <Txt small tone="signal">{tally.working} working</Txt>}
+      {!brief && tally.waiting > 0 && <Txt small tone="amber" weight="bold">{tally.waiting} waiting on you</Txt>}
     </Pressable>
   );
 }
@@ -176,8 +195,7 @@ export function Screen({ children, bare }: { children: ReactNode; bare?: boolean
     // anything above it (a header, the status bar) would leave it that much short.
     // On Android too: the app draws edge to edge there, so the system no longer resizes it for the keyboard.
     <KeyboardAvoidingView style={styles.screen} behavior="padding">
-      {/* ponytail: in a browser, the phone's one column, centred. A layout that uses a wide screen is its own piece of work. */}
-      <SafeAreaView style={[{ flex: 1 }, Platform.OS === 'web' && styles.column]} edges={bare && !typing ? ['top', 'bottom'] : ['top']}>
+      <SafeAreaView style={{ flex: 1 }} edges={bare && !typing ? ['top', 'bottom'] : ['top']}>
         {children}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -258,7 +276,10 @@ export function Reaching({ what }: { what: string }) {
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.tube },
   pad: { paddingHorizontal: gutter },
-  column: { width: '100%', maxWidth: 620, alignSelf: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: color.rule },
+  // Text to read and forms to fill stop at a comfortable width however wide the window is; lists and terminals use it all.
+  readable: { width: '100%', maxWidth: 760 },
+  // A conversation: wider than prose, for the code in it, but not a line a whole monitor long.
+  talk: { width: '100%', maxWidth: 1040 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: tap, paddingHorizontal: gutter, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.rule },
   back: { minHeight: tap, justifyContent: 'center', maxWidth: '45%' },
   status: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: tap, paddingHorizontal: gutter, backgroundColor: color.bezel },
@@ -269,9 +290,10 @@ export const styles = StyleSheet.create({
   btnDanger: { borderColor: color.raspberry },
   field: { flexDirection: 'row', alignItems: 'center', minHeight: tap, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.rule },
   fieldLabel: { width: 84 },
-  input: { flex: 1, color: color.phosphor, fontFamily: font.regular, fontSize: size.body, paddingVertical: 10 },
+  // No browser focus ring: the line under a field, and the caret in it, already say where you are.
+  input: { flex: 1, color: color.phosphor, fontFamily: font.regular, fontSize: size.body, paddingVertical: 10, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: tap },
-  form: { paddingHorizontal: gutter, paddingVertical: 12, gap: 4 },
+  form: { paddingHorizontal: gutter, paddingVertical: 12, gap: 4, width: '100%', maxWidth: 760 },
   empty: { alignItems: 'center', gap: 20, paddingHorizontal: gutter, paddingTop: 56, paddingBottom: 32 },
   // The column a face sits in at the start of a row, so names line up down a list.
   faceCol: { width: 52 },

@@ -4,7 +4,7 @@ import { Alert, Linking, ScrollView, View } from 'react-native';
 import { useConnection } from '../connection';
 import { Face, type Mood } from '../face';
 import { gutter } from '../theme';
-import { Btn, Field, Header, Rule, Screen, Txt, Waiting } from '../ui';
+import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 /** Signing this Toto's agents in to Claude: with a subscription, in two taps and a paste, or with an API key. */
 export default function ClaudeScreen() {
@@ -35,7 +35,7 @@ export default function ClaudeScreen() {
   return (
     <Screen bare>
       <Header parent={node?.name ?? 'toto'} title="claude" />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }, styles.readable]}>
         <Face mood={mood} size={34} nose />
 
         {!loaded ? (

@@ -6,7 +6,7 @@ import { useConnection } from '../connection';
 import { Face } from '../face';
 import { sealTo } from '../secure';
 import { gutter } from '../theme';
-import { Btn, Header, Screen, Txt, Waiting } from '../ui';
+import { Btn, Header, Screen, Txt, Waiting, styles } from '../ui';
 
 /** What a browser's code asks for, checked for shape: it came from a camera pointed at who knows what. */
 function askIn(params: Record<string, unknown>) {
@@ -64,7 +64,7 @@ export default function WebAccess() {
   return (
     <Screen bare>
       <Header title="browser" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }}>
+      <ScrollView contentContainerStyle={[{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }, styles.readable]}>
         <Face mood={stage === 'failed' || cannot ? 'failed' : stage === 'sent' && theirs && !theirs.pending ? 'awake' : stage === 'asking' ? 'waiting' : 'working'} size={34} nose />
         {cannot ? (
           <>

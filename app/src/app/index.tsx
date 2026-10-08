@@ -4,7 +4,7 @@ import { FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Project } from '../connection';
 import { Face } from '../face';
 import { moodOfMany } from '../moods';
-import { Btn, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles } from '../ui';
+import { Btn, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles, useWide } from '../ui';
 
 function ProjectRow({ project }: { project: Project }) {
   const { agents, activity } = useConnection();
@@ -75,16 +75,18 @@ function AddProject() {
 export default function Projects() {
   const { projects, pending, loaded, node, claude } = useConnection();
   const router = useRouter();
+  // Beside the sidebar, which already names the Toto, links to its settings and says if Claude needs signing in.
+  const wide = useWide();
   return (
     <Screen>
       <Header
         parent="totos"
         onBack={() => router.push('/nodes')}
-        title={node?.name ?? 'toto'}
-        right={<Btn label="settings" onPress={() => router.push('/device')} spoken={`Settings for ${node?.name ?? 'this Toto'}`} style={{ minHeight: 32, paddingHorizontal: 10 }} />}
+        title={wide ? 'projects' : (node?.name ?? 'toto')}
+        right={wide ? undefined : <Btn label="settings" onPress={() => router.push('/device')} spoken={`Settings for ${node?.name ?? 'this Toto'}`} style={{ minHeight: 32, paddingHorizontal: 10 }} />}
       />
       {/* Nothing an agent does works until this is done, so it sits above everything until it is. */}
-      {claude === 'none' && (
+      {claude === 'none' && !wide && (
         <Pressable onPress={() => router.push('/claude')} style={[styles.row, { flexDirection: 'row', alignItems: 'center' }]} accessibilityRole="button">
           <View style={styles.faceCol}><Face mood="waiting" size={13} /></View>
           <View style={{ flex: 1 }}>

@@ -9,6 +9,8 @@ import { Txt, Waiting } from './ui';
 const FONT_SIZE = 12;
 // IBM Plex Mono's advance width is 0.6em.
 const CHAR_WIDTH = FONT_SIZE * 0.6;
+/** The keys of a real keyboard that mean something to a terminal and never reach a text field as text. */
+const HARD_KEYS: Record<string, TermKey> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Tab: 'tab', Escape: 'escape', Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown' };
 const ROWS = 30;
 
 // What a phone keyboard lacks or buries. A string is typed as it is; a key is pressed.
@@ -59,7 +61,9 @@ const Line = memo(
 export function Terminal({ agentId }: { agentId: string }) {
   const { post, screens, status } = useConnection();
   const { width } = useWindowDimensions();
-  const cols = Math.floor((width - 2 * gutter) / CHAR_WIDTH);
+  // Its own width, not the window's: on a wide screen it sits beside the sidebar.
+  const [paneWidth, setPaneWidth] = useState(width);
+  const cols = Math.max(20, Math.floor((paneWidth - 2 * gutter) / CHAR_WIDTH));
   const scroll = useRef<ScrollView>(null);
   // Follow new output, unless the reader has scrolled up into the history.
   const following = useRef(true);
@@ -109,6 +113,16 @@ export function Terminal({ agentId }: { agentId: string }) {
     post({ type: 'term_input', agentId, text, key });
   };
 
+  const hardKey = (e: unknown) => {
+    const event = (e as { nativeEvent: KeyboardEvent }).nativeEvent;
+    const named = HARD_KEYS[event.key];
+    const key: TermKey | undefined = named ?? (event.ctrlKey && /^[a-z]$/i.test(event.key) ? `ctrl-${event.key.toLowerCase()}` : undefined);
+    if (!key) return;
+    // Or the browser would also act on it: move focus on Tab, scroll on an arrow.
+    event.preventDefault();
+    press(undefined, key);
+  };
+
   const fieldChanged = (next: string) => {
     const { backspaces, text } = typed(seen.current, next);
     for (let i = 0; i < backspaces; i++) press(undefined, 'backspace');
@@ -123,7 +137,7 @@ export function Terminal({ agentId }: { agentId: string }) {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1 }} onLayout={(e) => setPaneWidth(e.nativeEvent.layout.width)}>
       <ScrollView
         ref={scroll}
         style={{ flex: 1 }}
@@ -149,6 +163,8 @@ export function Terminal({ agentId }: { agentId: string }) {
         value={field}
         onChangeText={fieldChanged}
         onSubmitEditing={() => press(undefined, 'enter')}
+        // A real keyboard has the keys the bar below stands in for on a phone.
+        onKeyPress={Platform.OS === 'web' ? hardKey : undefined}
         submitBehavior="submit"
         onFocus={() => setTyping(true)}
         onBlur={() => setTyping(false)}

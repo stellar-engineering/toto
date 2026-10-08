@@ -130,7 +130,7 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
   };
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }, styles.readable]}>
       <Face mood={mood} size={34} nose />
 
       {step.at === 'starting' && <Waiting>Checking Bluetooth…</Waiting>}

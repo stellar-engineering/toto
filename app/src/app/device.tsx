@@ -6,7 +6,7 @@ import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
 import { gutter } from '../theme';
-import { Btn, Field, Header, Rule, Screen, Txt, Waiting } from '../ui';
+import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 function Author({ identity }: { identity: Identity }) {
   const { request, busy, pending } = useConnection();
@@ -109,7 +109,7 @@ function Phones({ phones }: { phones: Phone[] }) {
 }
 
 const Section = ({ title, about, children }: { title: string; about: string; children: React.ReactNode }) => (
-  <View style={{ paddingHorizontal: gutter, paddingVertical: 20 }}>
+  <View style={[{ paddingHorizontal: gutter, paddingVertical: 20 }, styles.readable]}>
     <Txt weight="bold" accessibilityRole="header">{title}</Txt>
     <Txt tone="ghost" small style={{ marginTop: 2, marginBottom: 8 }}>{about}</Txt>
     {children}
@@ -240,7 +240,7 @@ export default function Device() {
           </>
           )}
           <Rule />
-          <View style={{ padding: gutter, paddingTop: 24 }}>
+          <View style={[{ padding: gutter, paddingTop: 24 }, styles.readable]}>
             <Btn label="Forget this Toto" kind="danger" onPress={confirmForget} />
           </View>
         </ScrollView>

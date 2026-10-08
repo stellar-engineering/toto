@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { useConnection, type Invitation } from './connection';
 import { Face } from './face';
 import { gutter } from './theme';
-import { Btn, Txt, Waiting } from './ui';
+import { Btn, Txt, Waiting, styles } from './ui';
 
 /** Uses an invitation, saying what is happening and what went wrong if it does. */
 export function Joining({ invitation, onDone }: { invitation: Invitation | undefined; onDone: () => void }) {
@@ -23,7 +23,7 @@ export function Joining({ invitation, onDone }: { invitation: Invitation | undef
   }, [invitation]);
 
   return (
-    <View style={{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }}>
+    <View style={[{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }, styles.readable]}>
       <Face mood={problem ? 'failed' : 'looking'} size={34} nose />
       {problem ? (
         <>

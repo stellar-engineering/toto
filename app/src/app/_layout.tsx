@@ -13,7 +13,8 @@ import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
 import { color, font, gutter, size } from '../theme';
-import { Btn, Screen, Txt } from '../ui';
+import { Sidebar } from '../sidebar';
+import { Btn, Screen, Txt, useWide } from '../ui';
 import { WebPair } from '../webpair';
 
 // In a browser, the system dialogs the app asks its questions with do nothing at all. The
@@ -43,7 +44,7 @@ function Setup() {
   if (Platform.OS === 'web' && !byHand)
     return (
       <Screen bare>
-        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter, gap: 20 }}>
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter, gap: 20, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
           <Txt weight="bold" style={{ fontSize: size.display, lineHeight: size.display * 1.1, letterSpacing: -2 }} accessibilityRole="header">
             toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
           </Txt>
@@ -60,7 +61,7 @@ function Setup() {
     );
   return (
     <Screen bare>
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter }}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
         <Face mood={trying ? 'looking' : 'awake'} size={52} nose style={{ marginBottom: 28 }} />
         <Txt weight="bold" style={{ fontSize: size.display, lineHeight: size.display * 1.1, letterSpacing: -2 }} accessibilityRole="header">
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
@@ -76,6 +77,7 @@ function Setup() {
 function Root() {
   const { status, nodes, switchTo } = useConnection();
   const router = useRouter();
+  const wide = useWide();
   const ready = status !== 'setup';
 
   // Tapping a notification opens the conversation it was about, on the Toto it came from, once
@@ -111,7 +113,14 @@ function Root() {
     );
   if (status === 'setup') return <Setup />;
   // Open or reconnecting: keep every screen where it was, so a dropped connection costs nothing but a moment.
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube } }} />;
+  const screens = <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube }, animation: wide ? 'none' : undefined }} />;
+  if (!wide) return screens;
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: color.tube }}>
+      <Sidebar />
+      <View style={{ flex: 1 }}>{screens}</View>
+    </View>
+  );
 }
 
 export default function Layout() {

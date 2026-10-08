@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } from 'react-native';
 import { useConnection, type AgentEvent } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
@@ -184,6 +184,8 @@ function Chat({ agentId }: { agentId: string }) {
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
   const rows = useMemo(() => toRows(events).reverse(), [events]);
   const [draft, setDraft] = useState('');
+  // In a browser the box does not grow with what is typed unless told how tall its text has become.
+  const [tall, setTall] = useState(0);
   const online = status === 'open';
   const state = activity[agentId] ?? 'idle';
 
@@ -220,7 +222,7 @@ function Chat({ agentId }: { agentId: string }) {
         inverted
         data={rows}
         keyExtractor={(_, i) => String(rows.length - i)}
-        contentContainerStyle={{ paddingVertical: 12 }}
+        contentContainerStyle={[{ paddingVertical: 12 }, ui.talk]}
         renderItem={({ item }) =>
           item.kind === 'tool' ? (
             <ToolRow row={item} online={online} deciding={!!deciding[item.id]} onDecide={decide(item.id)} />
@@ -261,9 +263,21 @@ function Chat({ agentId }: { agentId: string }) {
       <View style={local.composer}>
         <Txt tone="amber" weight="bold" style={{ paddingVertical: 11 }}>❯</Txt>
         <TextInput
-          style={[ui.input, { maxHeight: 120 }]}
+          style={[ui.input, { maxHeight: 160 }, Platform.OS === 'web' && { height: Math.max(40, Math.min(160, tall)) }]}
           value={draft}
           onChangeText={setDraft}
+          onContentSizeChange={(e) => setTall(e.nativeEvent.contentSize.height)}
+          // With a real keyboard, Enter sends and Shift+Enter starts a new line.
+          onKeyPress={
+            Platform.OS === 'web'
+              ? (e) => {
+                  const event = e.nativeEvent as unknown as KeyboardEvent;
+                  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+                  event.preventDefault();
+                  send();
+                }
+              : undefined
+          }
           placeholder={online ? 'Tell it what to do' : 'Reconnecting…'}
           placeholderTextColor={color.ghost}
           selectionColor={color.amber}
@@ -354,7 +368,8 @@ const local = StyleSheet.create({
   text: { paddingHorizontal: gutter, paddingVertical: 6 },
   tool: { paddingHorizontal: gutter, paddingVertical: 6, minHeight: 34 },
   under: { paddingLeft: 18 },
-  ask: { backgroundColor: color.amber, padding: gutter, marginVertical: 8 },
+  // On a phone the question runs edge to edge. On a wide screen that would be a banner with a button a foot long, so it is a block of its own.
+  ask: { backgroundColor: color.amber, padding: gutter, marginVertical: 8, ...(Platform.OS === 'web' ? { maxWidth: 640, marginLeft: gutter, marginRight: gutter } : null) },
   option: { paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1.5, borderColor: color.tube, borderRadius: 2, minHeight: tap },
   askBtn: { minHeight: tap + 4, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 2 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: gutter, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.rule, backgroundColor: color.bezel },
