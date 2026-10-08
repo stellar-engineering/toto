@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { chmodSync, readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
-import { browserArgs, startClaude, toEvents } from './claude.ts';
+import { browserArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
 import { readFrame, tmuxKey } from './terminal.ts';
@@ -120,6 +122,17 @@ test('terminal keys: only known names reach tmux', () => {
   assert.equal(tmuxKey('pageup'), 'PPage');
   assert.equal(tmuxKey('ctrl-c'), 'C-c');
   for (const bad of ['ctrl-C', 'ctrl-cc', 'ctrl-;', 'Enter', '-t other', 'constructor', '', undefined, 5]) assert.equal(tmuxKey(bad), undefined, String(bad));
+});
+
+test('every installed plugin is given to Claude, and a missing or empty directory gives nothing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'toto-plugins-'));
+  mkdirSync(`${dir}/b/.claude-plugin`, { recursive: true });
+  writeFileSync(`${dir}/b/.claude-plugin/plugin.json`, '{}');
+  mkdirSync(`${dir}/a/.claude-plugin`, { recursive: true });
+  writeFileSync(`${dir}/a/.claude-plugin/plugin.json`, '{}');
+  mkdirSync(`${dir}/.incoming-x/plugin`, { recursive: true });
+  assert.deepEqual(pluginArgs(dir), ['--plugin-dir', `${dir}/a`, '--plugin-dir', `${dir}/b`]);
+  assert.deepEqual(pluginArgs('/nowhere'), []);
 });
 
 test('the browser plugin is given to Claude only where there is a Chromium to drive', () => {

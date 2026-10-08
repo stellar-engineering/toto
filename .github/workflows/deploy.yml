@@ -5,7 +5,7 @@ name: Deploy site and relay
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'relay/**', 'app/**', 'protocol.ts', '.github/workflows/deploy.yml']
+    paths: ['site/**', 'relay/**', 'app/**', 'plugins/**', 'plugin.pub', 'protocol.ts', '.github/workflows/deploy.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,6 +35,14 @@ jobs:
           npx tsc --noEmit
           npx expo export -p web
           rm -rf ../site/app && cp -r dist ../site/app
+      # Plugins are served from /plugins, signed with the PLUGIN_KEY secret. Without it there are none,
+      # which leaves a Toto's plugin install failing to download; it never installs anything unsigned.
+      - name: Sign the plugins
+        env:
+          PLUGIN_KEY: ${{ secrets.PLUGIN_KEY }}
+        run: |
+          [ -n "$PLUGIN_KEY" ] || { echo "::warning::No PLUGIN_KEY secret, so no plugins are published."; exit 0; }
+          for dir in plugins/*/; do node plugins/pack.mjs "$(basename "$dir")" site/plugins; done
       # Checked whether or not there is a token, so a change that would not deploy is caught either way.
       - name: Check
         working-directory: relay

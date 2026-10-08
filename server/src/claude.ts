@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent, ImageRef } from '../../protocol.ts';
@@ -13,6 +13,19 @@ const CHROMIUM = '/usr/bin/chromium';
 /** What gives a Claude session its browser; nothing on a machine that has no Chromium to drive. */
 export const browserArgs = (plugin = BROWSER_PLUGIN, chromium = CHROMIUM): string[] =>
   existsSync(plugin) && existsSync(chromium) ? ['--plugin-dir', plugin] : [];
+
+// Plugins installed on this device (see bin/toto-plugin.mjs). The installer put them there after
+// checking their signature; they are root's, so nothing here can have been written by an agent.
+const PLUGINS = '/var/lib/toto-plugins';
+
+/** What gives a Claude session each plugin that is installed. */
+export const pluginArgs = (dir = PLUGINS): string[] => {
+  try {
+    return readdirSync(dir).sort().filter((name) => existsSync(`${dir}/${name}/.claude-plugin/plugin.json`)).flatMap((name) => ['--plugin-dir', `${dir}/${name}`]);
+  } catch {
+    return [];
+  }
+};
 
 /** Puts a picture away and gives back the reference to it; undefined if it is not one worth keeping. */
 type Keep = (mime: unknown, base64: unknown) => ImageRef | undefined;
@@ -73,6 +86,7 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onSessio
     '--permission-mode', 'manual',
     '--permission-prompt-tool', 'stdio',
     ...browserArgs(),
+    ...pluginArgs(),
     ...(sessionId ? ['--resume', sessionId] : []),
   ]);
   const child = spawn(file, args, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] });
