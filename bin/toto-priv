@@ -1,6 +1,7 @@
 #!/bin/bash
 # The only things toto-server may run as root: create or delete a project's Linux user, say
-# whether that user may reach the local network, and list or join Wi-Fi networks.
+# whether that user may reach the local network, list or join Wi-Fi networks, start an update, and
+# install or remove a plugin.
 # Installed root-owned at /opt/toto/bin/toto-priv and allowed by /etc/sudoers.d/toto.
 set -euo pipefail
 
@@ -18,6 +19,12 @@ case "${1:-}" in
   update)
     # No arguments are passed on: what to install and whom to trust are the updater's own business.
     exec /usr/bin/node /opt/toto/bin/toto-update.mjs
+    ;;
+  plugin-install|plugin-remove)
+    # Only the plugin's name is passed on. Where the bundle comes from and whom to trust are the
+    # installer's own business, as with an update.
+    [[ "${2:-}" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "toto-priv: bad plugin name" >&2; exit 2; }
+    exec /usr/bin/node /opt/toto/bin/toto-plugin.mjs "${1#plugin-}" "$2"
     ;;
   wifi-list)
     # In use, signal, security, name; the name last because it is the field that may contain colons.

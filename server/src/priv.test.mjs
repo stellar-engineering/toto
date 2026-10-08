@@ -23,5 +23,5 @@ test('listing Wi-Fi prints the networks and succeeds', () => {
 });
 
 test('anything that is not one of its commands, or names no project user, is refused', () => {
-  for (const args of [[], ['wifi-list-all'], ['delete-user', 'root'], ['create-user', 'toto-p-zzzzzzzz'], ['wifi-country', 'gb; reboot']]) assert.equal(run(...args).status, 2, args.join(' '));
+  for (const args of [[], ['wifi-list-all'], ['delete-user', 'root'], ['create-user', 'toto-p-zzzzzzzz'], ['wifi-country', 'gb; reboot'], ['plugin-install'], ['plugin-install', '../gh'], ['plugin-remove', 'gh;reboot'], ['plugin-install', 'Gh']]) assert.equal(run(...args).status, 2, args.join(' '));
 });

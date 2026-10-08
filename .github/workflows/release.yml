@@ -25,7 +25,7 @@ jobs:
         run: cd server && npm ci && npm test
       - name: Bundle
         run: |
-          tar czf toto.tar.gz install.sh protocol.ts release.pub LICENSE bin server/src server/plugins server/package.json server/package-lock.json server/tsconfig.json
+          tar czf toto.tar.gz install.sh protocol.ts release.pub plugin.pub LICENSE bin server/src server/plugins server/package.json server/package-lock.json server/tsconfig.json
           node -p "require('./server/package.json').version" > version
       - name: Sign, and check the signature is one a Toto will accept
         env:

@@ -1,0 +1,6 @@
+{
+  "name": "toto-gh",
+  "description": "GitHub's command line for Toto's agents, and a skill on using it.",
+  "version": "1.0.0",
+  "author": { "name": "Toto" }
+}

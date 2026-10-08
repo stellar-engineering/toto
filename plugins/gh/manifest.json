@@ -1,0 +1,6 @@
+{
+  "name": "gh",
+  "version": "1.0.0",
+  "description": "GitHub's command line, for agents: pull requests, issues and checks.",
+  "apt": ["gh"]
+}

@@ -34,6 +34,10 @@ install -m 755 "$src/bin/toto-firstboot" /opt/toto/bin/toto-firstboot
 # The updater, and the public half of the key a release must be signed with. Root's, like the helper.
 install -m 755 "$src/bin/toto-update.mjs" /opt/toto/bin/toto-update.mjs
 install -m 644 "$src/release.pub" /opt/toto/release.pub
+# Plugins: the installer, the key their bundles must be signed with, and where they are put.
+install -m 755 "$src/bin/toto-plugin.mjs" /opt/toto/bin/toto-plugin.mjs
+install -m 644 "$src/plugin.pub" /opt/toto/plugin.pub
+install -d -m 755 /var/lib/toto-plugins
 rm -rf /opt/toto/server
 cp -r "$src/server" "$src/protocol.ts" /opt/toto/
 rm -rf /opt/toto/server/node_modules
