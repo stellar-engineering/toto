@@ -129,6 +129,6 @@ test('the browser plugin is given to Claude only where there is a Chromium to dr
   assert.deepEqual(browserArgs('/nowhere/plugin', fileURLToPath(import.meta.url)), []);
   // Its server must be the one install.sh installs, and the skill must be there to be found.
   const mcp = JSON.parse(readFileSync(`${plugin}/.mcp.json`, 'utf8')).mcpServers.browser;
-  assert.equal(mcp.command, 'playwright-mcp');
+  assert.equal(mcp.command, 'chrome-devtools-mcp');
   assert.ok(readFileSync(`${plugin}/skills/browser/SKILL.md`, 'utf8').startsWith('---\nname: browser\n'));
 });

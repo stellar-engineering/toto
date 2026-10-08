@@ -79,7 +79,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 
 ### M4: Consumer readiness
 - Updates: the agent CLIs by themselves, Toto's server on a tap from signed releases, OS security patches unattended.
-- Done: a headless browser for chat agents. Chromium on the device, driven by Playwright's MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminal agents do not get it.
+- Done: a headless browser for chat agents. Chromium on the device, driven by the Chrome DevTools MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminal agents do not get it.
 - MCP setup: a curated list first, with a fuller marketplace after.
 - Per-project overrides for credentials and MCP servers.
 - Codex and Gemini chat adapters. Full auto is straightforward for both; asking for approval needs each tool's richer host mode (`codex app-server`, Gemini's ACP), which is unproven.

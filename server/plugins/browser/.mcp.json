@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "browser": {
-      "command": "playwright-mcp",
-      "args": ["--headless", "--isolated", "--browser", "chromium", "--executable-path", "/usr/bin/chromium"]
+      "command": "chrome-devtools-mcp",
+      "args": ["--headless", "--isolated", "--executablePath", "/usr/bin/chromium", "--no-usage-statistics", "--no-performance-crux"]
     }
   }
 }
