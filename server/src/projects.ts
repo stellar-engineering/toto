@@ -54,6 +54,12 @@ export const run = (user: string | undefined, cwd: string, cmd: string, args: st
   return sh(file, argv, opts, input);
 };
 
+/** The first `max` + 1 bytes of a file, read as a project's user, so no more can be read than that user could. Undefined if it cannot be read. */
+export async function readAs(user: string | undefined, cwd: string, path: string, max: number): Promise<Buffer | undefined> {
+  const [file, args, opts] = command(user, cwd, 'head', ['-c', String(max + 1), '--', path]);
+  return exec(file, args, { ...opts, encoding: 'buffer', maxBuffer: max + 4096, timeout: 30_000 }).then((r) => r.stdout, () => undefined);
+}
+
 // ponytail: one key for the whole device, copied into every project, so any project's agents can
 // reach every repo the key can. Per-project deploy keys are the tighter upgrade.
 const keyFile = join(dataDir, 'id_ed25519');

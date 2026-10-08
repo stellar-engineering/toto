@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ImageRef } from '../../protocol.ts';
+import type { FileRef, ImageRef } from '../../protocol.ts';
 import { dataDir } from './projects.ts';
 
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -33,4 +33,30 @@ export function readImage(agentId: unknown, id: unknown, root = dataDir): Buffer
   return existsSync(file) ? readFileSync(file) : undefined;
 }
 
-export const dropImages = (agentId: string, root = dataDir) => isAgent(agentId) && rmSync(folder(agentId, root), { recursive: true, force: true });
+// Files an agent sent, kept the same way: beside the conversation, which holds only a reference.
+export const MAX_FILE = 10 * 1024 * 1024;
+const TYPES_BY_EXTENSION: Record<string, string> = { pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', json: 'application/json', csv: 'text/csv', html: 'text/html', zip: 'application/zip', gz: 'application/gzip', tar: 'application/x-tar', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', log: 'text/plain' };
+const filesIn = (agentId: string, root: string) => join(root, 'files', agentId);
+
+/** Keeps a file an agent sent. Undefined if there is nothing in it or it is too big. */
+export function saveFile(agentId: string, bytes: Buffer, name: string, root = dataDir): FileRef | undefined {
+  if (!isAgent(agentId) || !bytes.length || bytes.length > MAX_FILE) return undefined;
+  const id = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+  // Only the name it ends in, and nothing that would not read as a name.
+  const clean = (name.split('/').pop() ?? '').replace(/[\u0000-\u001f\u007f]/g, '').slice(-100) || 'file';
+  mkdirSync(filesIn(agentId, root), { recursive: true, mode: 0o700 });
+  writeFileSync(join(filesIn(agentId, root), id), bytes, { mode: 0o600 });
+  return { id, name: clean, mime: TYPES_BY_EXTENSION[clean.split('.').pop()!.toLowerCase()] ?? 'application/octet-stream', bytes: bytes.length };
+}
+
+export function readFile(agentId: unknown, id: unknown, root = dataDir): Buffer | undefined {
+  if (!isAgent(agentId) || !isImage(id)) return undefined;
+  const file = join(filesIn(agentId, root), id);
+  return existsSync(file) ? readFileSync(file) : undefined;
+}
+
+export const dropImages = (agentId: string, root = dataDir) => {
+  if (!isAgent(agentId)) return;
+  rmSync(folder(agentId, root), { recursive: true, force: true });
+  rmSync(filesIn(agentId, root), { recursive: true, force: true });
+};

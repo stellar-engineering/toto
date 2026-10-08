@@ -27,6 +27,10 @@ export const pluginArgs = (dir = PLUGINS): string[] => {
   }
 };
 
+// What lets an agent send the person a file (see plugins/files), shipped with the server like the browser's.
+const FILES_PLUGIN = fileURLToPath(new URL('../plugins/files', import.meta.url));
+export const filesArgs = (plugin = FILES_PLUGIN): string[] => (existsSync(plugin) ? ['--plugin-dir', plugin] : []);
+
 /** Puts a picture away and gives back the reference to it; undefined if it is not one worth keeping. */
 type Keep = (mime: unknown, base64: unknown) => ImageRef | undefined;
 
@@ -86,6 +90,7 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onSessio
     '--permission-mode', 'manual',
     '--permission-prompt-tool', 'stdio',
     ...browserArgs(),
+    ...filesArgs(),
     ...pluginArgs(),
     ...(sessionId ? ['--resume', sessionId] : []),
   ]);

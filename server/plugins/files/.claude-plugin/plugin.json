@@ -1,0 +1,6 @@
+{
+  "name": "toto-files",
+  "description": "Lets Toto's agents send a file from the project to the person's phone.",
+  "version": "1.0.0",
+  "author": { "name": "Toto" }
+}

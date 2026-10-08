@@ -3,10 +3,10 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameS
 import { createServer } from 'node:net';
 import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
-import { MAX_IMAGE, dropImages, readImage, saveImage } from './images.ts';
+import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
@@ -23,6 +23,7 @@ import {
   installEnv,
   asksUser,
   openApprovals,
+  readAs,
   startUpdate,
   removeProject,
   removeWorktree,
@@ -217,13 +218,31 @@ for (const agent of state.agents)
 
 // ponytail: agents are direct children, so a server restart ends any turn in flight;
 // the conversation itself resumes from its session id on the next prompt.
+// A file an agent sends is a call to the `send_file` tool; once it has said it worked, this reads the
+// file (as the project's user, so no more than the agent could read itself) and attaches it to the result.
+const fileCalls = new Map<string, string>();
+async function withFiles(agent: AgentRecord, user: string | undefined, e: AgentEvent): Promise<AgentEvent> {
+  if (e.type === 'tool_call' && e.name.endsWith('__send_file') && typeof (e.input as any)?.path === 'string') fileCalls.set(e.id, (e.input as any).path);
+  if (e.type !== 'tool_result' || !fileCalls.has(e.id)) return e;
+  const path = fileCalls.get(e.id)!;
+  fileCalls.delete(e.id);
+  if (e.isError) return e;
+  const bytes = await readAs(user, agent.cwd, resolve(agent.cwd, path), MAX_FILE);
+  const file = bytes && saveFile(agent.id, bytes, path);
+  return file ? { ...e, files: [file] } : { ...e, isError: true, output: `${path} could not be sent.` };
+}
+const chains = new Map<string, Promise<void>>();
+
 const start = (agent: AgentRecord) => {
   const project = state.projects.find((p) => p.id === agent.projectId)!;
   const proc = startClaude({
     cwd: agent.cwd,
     user: project.user,
     sessionId: agent.sessionId,
-    onEvent: (e) => emit(agent, e),
+    onEvent: (e) => {
+      // In order, even when sending a file means waiting to read it.
+      chains.set(agent.id, (chains.get(agent.id) ?? Promise.resolve()).then(() => withFiles(agent, project.user, e)).then((out) => emit(agent, out)).catch(console.error));
+    },
     keepImage: (mime, data) => saveImage(agent.id, mime, data),
     onSession: (id) => {
       agent.sessionId = id;
@@ -445,6 +464,14 @@ async function handle(msg: ClientMessage, ws: Client) {
       const of = Math.ceil(bytes.length / IMAGE_PIECE);
       for (let at = 0; at < of; at++)
         send(ws, { type: 'image', agentId: msg.agentId, id: msg.id, at, of, data: bytes.subarray(at * IMAGE_PIECE, (at + 1) * IMAGE_PIECE).toString('base64') });
+      return;
+    }
+    case 'file': {
+      const bytes = readFile(msg.agentId, msg.id);
+      if (!bytes) throw new Error('That file is no longer on this Toto.');
+      const of = Math.ceil(bytes.length / IMAGE_PIECE);
+      for (let at = 0; at < of; at++)
+        send(ws, { type: 'file', agentId: msg.agentId, id: msg.id, at, of, data: bytes.subarray(at * IMAGE_PIECE, (at + 1) * IMAGE_PIECE).toString('base64') });
       return;
     }
     case 'upload': {

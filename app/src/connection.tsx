@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Phone, Plugin, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Identity, ImageRef, Phone, Plugin, Project, ServerMessage } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -10,7 +10,7 @@ import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Plugin, Project, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Mode, Plugin, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -100,6 +100,9 @@ type Connection = {
   pictures: Record<string, string>;
   /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
   wantPicture: (agentId: string, image: ImageRef) => void;
+  /** Fetches a file an agent sent. It arrives in `pictures`, by its id; `dropPicture` lets go of it. */
+  wantFile: (agentId: string, file: FileRef) => void;
+  dropPicture: (id: string) => void;
   /** Says something to an agent, with any pictures to go with it. */
   say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[]) => void;
 };
@@ -270,7 +273,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setPending(undefined);
         setPluginLogin({ name: msg.name, url: msg.url, code: msg.code });
         break;
-      case 'image': {
+      case 'image':
+      case 'file': {
         const pieces = arriving.current[msg.id];
         if (!pieces) break;
         pieces[msg.at] = msg.data;
@@ -456,6 +460,17 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     post({ type: 'image', agentId, id: image.id });
   };
 
+  const wantFile: Connection['wantFile'] = (agentId, file) => {
+    if (!link.current || pictures[file.id] !== undefined || arriving.current[file.id]) return;
+    arriving.current[file.id] = [];
+    post({ type: 'file', agentId, id: file.id });
+  };
+  const dropPicture = (id: string) =>
+    setPictures((all) => {
+      const { [id]: _gone, ...rest } = all;
+      return rest;
+    });
+
   const say: Connection['say'] = (agentId, text, sending = []) => {
     const images = sending.map((picture) => {
       const id = bytesToHex(getRandomValues(new Uint8Array(8)));
@@ -480,7 +495,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );

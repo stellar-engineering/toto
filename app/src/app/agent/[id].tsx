@@ -2,11 +2,12 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } from 'react-native';
-import { useConnection, type AgentEvent, type ImageRef } from '../../connection';
+import { useConnection, type AgentEvent, type FileRef, type ImageRef } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
+import { Files } from '../../files';
 import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
 import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, styles as ui } from '../../ui';
 
@@ -14,7 +15,7 @@ const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
   | { kind: 'user' | 'text' | 'error'; text: string; images?: ImageRef[] }
-  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[] }; decision?: 'waiting' | boolean };
+  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean };
 
 /** Folds the event stream into what is shown: each tool call carries its own result and approval. */
 function toRows(events: AgentEvent[]): Row[] {
@@ -39,7 +40,7 @@ function toRows(events: AgentEvent[]): Row[] {
       if (row) row.decision = e.allowed;
     } else if (e.type === 'tool_result') {
       const row = tools.get(e.id);
-      if (row) row.result = { output: e.output, isError: e.isError, images: e.images };
+      if (row) row.result = { output: e.output, isError: e.isError, images: e.images, files: e.files };
     } else if (e.type === 'error') rows.push({ kind: 'error', text: e.message });
     else if (e.type === 'done' && e.isError) rows.push({ kind: 'error', text: 'Stopped on an error.' });
   }
@@ -174,6 +175,11 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
       {!!row.result?.images?.length && (
         <View style={[local.under, { paddingTop: 8 }]}>
           <Pictures agentId={agentId} images={row.result.images} />
+        </View>
+      )}
+      {!!row.result?.files?.length && (
+        <View style={[local.under, { paddingTop: 8 }]}>
+          <Files agentId={agentId} files={row.result.files} />
         </View>
       )}
       {expanded && (

@@ -9,13 +9,16 @@
  */
 export type ImageRef = { id: string; mime: string; bytes: number };
 
+/** A file an agent sent, by reference like a picture, and asked for with `file`. */
+export type FileRef = { id: string; name: string; mime: string; bytes: number };
+
 export type AgentEvent =
   // `images`: pictures the person sent along with what they said.
   | { type: 'user'; text: string; images?: ImageRef[] }
   | { type: 'text'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
-  // `images`: pictures the tool returned, such as a screenshot.
-  | { type: 'tool_result'; id: string; output: string; isError: boolean; images?: ImageRef[] }
+  // `images`: pictures the tool returned, such as a screenshot. `files`: files the agent sent.
+  | { type: 'tool_result'; id: string; output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }
   // `id` is the id of the tool call waiting on a decision.
   | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'approval_resolved'; id: string; allowed: boolean }
@@ -126,6 +129,8 @@ export type ServerMessage =
   | { type: 'plugin_login'; name: string; url: string; code: string }
   // The answer to `image`: piece `at` of `of`, as base64. A picture is too big to send in one message.
   | { type: 'image'; agentId: string; id: string; at: number; of: number; data: string }
+  // The answer to `file`, in pieces in the same way.
+  | { type: 'file'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `ping`: this device is here, and this is what it is called.
   | { type: 'pong'; name: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
@@ -179,6 +184,8 @@ export type ClientMessage =
   | { type: 'prompt'; agentId: string; text: string; images?: { id: string; mime: string }[] }
   // Ask for a picture from an agent's conversation. It comes back as `image` messages.
   | { type: 'image'; agentId: string; id: string }
+  // Ask for a file an agent sent. It comes back as `file` messages.
+  | { type: 'file'; agentId: string; id: string }
   // One piece of a picture being sent to an agent: piece `at` of `of`, as base64. The client
   // chooses `id` (16 hex characters) and names it in the `prompt` that follows.
   | { type: 'upload'; id: string; at: number; of: number; data: string }

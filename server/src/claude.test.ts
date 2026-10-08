@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
-import { browserArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
+import { browserArgs, filesArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
 import { readFrame, tmuxKey } from './terminal.ts';
@@ -133,6 +133,13 @@ test('every installed plugin is given to Claude, and a missing or empty director
   mkdirSync(`${dir}/.incoming-x/plugin`, { recursive: true });
   assert.deepEqual(pluginArgs(dir), ['--plugin-dir', `${dir}/a`, '--plugin-dir', `${dir}/b`]);
   assert.deepEqual(pluginArgs('/nowhere'), []);
+});
+
+test('agents are given the tool for sending files', () => {
+  const plugin = fileURLToPath(new URL('../plugins/files', import.meta.url));
+  assert.deepEqual(filesArgs(plugin), ['--plugin-dir', plugin]);
+  assert.deepEqual(filesArgs('/nowhere'), []);
+  assert.ok(readFileSync(`${plugin}/skills/files/SKILL.md`, 'utf8').startsWith('---\nname: files\n'));
 });
 
 test('the browser plugin is given to Claude only where there is a Chromium to drive', () => {
