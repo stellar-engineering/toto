@@ -41,6 +41,7 @@ M3 was done before M2 because a working box already existed and reaching it from
 | Design | Terminal-styled: one monospace face, dark only, amber for the user and for agents waiting on them |
 | Mark | A dog in six characters, `/o o\\` over a bullet nose, animated by swapping characters, with a mood per state. Shown throughout the app and on the device's own console |
 | App identity | `com.stellar.toto`, Expo project `@stellar-engineering/toto` |
+| Plugins | First party only, for now. A plugin is a signed bundle, not code the server runs: a manifest, pinned packages, skills and MCP servers for Claude, environment for agents, and optionally a sign-in flow shown on the phone. Hosted by the relay, but the device checks every bundle against a plugin key of its own (not the release key) before installing; the relay only lists them. Installing anything needs a `toto-priv` verb that takes a plugin name and checks it against what the device has verified, never a package name from the caller. Sign-in is once per Toto, shared by every project; the token sits in a private file and never on a command line |
 
 ## How it is built
 
@@ -80,6 +81,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 ### M4: Consumer readiness
 - Updates: the agent CLIs by themselves, Toto's server on a tap from signed releases, OS security patches unattended.
 - Done: a headless browser for chat agents. Chromium on the device, driven by the Chrome DevTools MCP server, with a skill on using it, both in a plugin the server hands to Claude (`server/plugins/browser`). Not yet measured on a Pi 4, and terminal agents do not get it.
+- Plugins, as in Decisions: the plugin key and manifest format, the `toto-priv` verb, the sign-in message in `protocol.ts` (older servers answer it with `failed`, older apps ignore it), the app screen. First plugin `gh`, signing in with GitHub's device flow; then the browser plugin moves onto the same mechanism.
 - MCP setup: a curated list first, with a fuller marketplace after.
 - Per-project overrides for credentials and MCP servers.
 - Codex and Gemini chat adapters. Full auto is straightforward for both; asking for approval needs each tool's richer host mode (`codex app-server`, Gemini's ACP), which is unproven.
@@ -94,6 +96,7 @@ One repository, three parts, with the message types shared in [protocol.ts](prot
 - **First setup trusts whoever is nearby.** Until a Toto has an owner, any phone in Bluetooth range can claim it; a Pi has no screen to confirm on.
 - **One shared token.** Anyone holding it has full control, and recorded traffic could be decrypted later by someone who obtained it. Fixed by M2 pairing.
 - **Loopback is open to agents.** The firewall keeps agents off the local network but cannot separate their own `127.0.0.1` from services on the device listening there. Closing that needs a network namespace per project.
+- **One `gh` sign-in for everything**, once plugins exist. Every project's agents can use it, so it should be as narrowly scoped as GitHub allows. Per-project sign-in would be tighter.
 - **One SSH key for everything.** Added to a git account, it gives every project's agents every repository that account can reach. Per-repository deploy keys would be tighter.
 - **Firewall rules are re-applied only at server start.** If something else wipes them while the server runs, they stay gone until it restarts.
 - **Histories are replayed whole on connect** and held in memory on both ends. This will need paging once conversations are long.
