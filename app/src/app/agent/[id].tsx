@@ -193,7 +193,7 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, live: written, activity, status, synced, post, say } = useConnection();
+  const { events: all, live: written, queued, activity, status, synced, post, say } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
   // What the agent is writing now, as the newest message, until the whole of it arrives and takes its place.
@@ -235,10 +235,13 @@ function Chat({ agentId }: { agentId: string }) {
     setAttached((have) => [...have, ...more].slice(0, 4));
   };
 
-  const send = () => {
+  // Partway through a turn, a message can wait for the turn to end (the usual) or go in at once and steer it.
+  const midTurn = state === 'working' || state === 'waiting';
+  const send = (later = false) => {
     if (!draft.trim() && !attached.length) return;
-    say(agentId, draft, attached);
-    setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
+    say(agentId, draft, attached, later);
+    // A message that waits is shown with the others that are waiting, not as one on its way.
+    if (!(later && midTurn)) setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
     setDraft('');
     setAttached([]);
   };
@@ -279,6 +282,20 @@ function Chat({ agentId }: { agentId: string }) {
         // The header of an inverted list sits at the bottom, under the newest message.
         ListHeaderComponent={
           <>
+            {/* What is waiting for the agent to finish, in the order it will be said. */}
+            {(queued[agentId] ?? []).map((item, i) => (
+              <View key={`${i}:${item.text}`} style={[local.user, { opacity: 0.55 }]} accessibilityLabel={`Waiting: ${item.text}`}>
+                <Txt tone="ghost" weight="bold">❯</Txt>
+                <View style={{ flex: 1, gap: 8 }}>
+                  {!!item.text && <Txt weight="medium">{item.text}</Txt>}
+                  {!!item.images?.length && <Txt tone="ghost" small>{item.images.length === 1 ? 'a picture' : `${item.images.length} pictures`}</Txt>}
+                  <Txt tone="ghost" small>waiting for it to finish</Txt>
+                </View>
+                <Pressable onPress={() => post({ type: 'unqueue', agentId, index: i })} hitSlop={10} accessibilityRole="button" accessibilityLabel="Take this message back">
+                  <Txt tone="ghost" weight="bold">x</Txt>
+                </Pressable>
+              </View>
+            ))}
             {!!unechoed && (
               // Your message, shown the moment you send it and dimmed until the agent has it.
               <View style={[local.user, { opacity: 0.55 }]} accessibilityLabel={`Sending: ${unechoed}`}>
@@ -314,7 +331,7 @@ function Chat({ agentId }: { agentId: string }) {
                   const event = e.nativeEvent as unknown as KeyboardEvent;
                   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
                   event.preventDefault();
-                  send();
+                  send(midTurn);
                 }
               : undefined
           }
@@ -327,7 +344,8 @@ function Chat({ agentId }: { agentId: string }) {
           accessibilityLabel="Message"
         />
         <Btn label="+" spoken="Add pictures" onPress={attach} busy={choosing} disabled={!online || attached.length >= 4} style={{ paddingHorizontal: 14 }} />
-        <Btn kind="primary" label="Send" onPress={send} disabled={!online || (!draft.trim() && !attached.length)} />
+        {midTurn && <Btn label="Steer" spoken="Send now, to steer what it is doing" onPress={() => send(false)} disabled={!online || (!draft.trim() && !attached.length)} />}
+        <Btn kind="primary" label={midTurn ? 'Queue' : 'Send'} spoken={midTurn ? 'Queue until it has finished' : undefined} onPress={() => send(midTurn)} disabled={!online || (!draft.trim() && !attached.length)} />
       </View>
     </View>
   );

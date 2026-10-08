@@ -150,6 +150,8 @@ export type ServerMessage =
   | { type: 'file'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `ping`: this device is here, and this is what it is called.
   | { type: 'pong'; name: string }
+  // What is waiting to be said to a chat agent when its turn ends, in order. Sent whenever it changes.
+  | { type: 'queue'; agentId: string; items: { text: string; images?: ImageRef[] }[] }
   // Words a chat agent is writing now, a few at a time. Not part of its history: the whole `text`
   // event follows, and replaces them.
   | { type: 'delta'; agentId: string; text: string }
@@ -203,7 +205,11 @@ export type ClientMessage =
   // Stops the agent and removes its history and, if it has one, its worktree. Its branch is kept.
   | { type: 'delete_agent'; agentId: string }
   // `images` are ones this client has just sent with `upload`, by the ids it gave them.
-  | { type: 'prompt'; agentId: string; text: string; images?: { id: string; mime: string }[] }
+  // `later`: if the agent is partway through a turn, hold this until it ends (see `queue`) and not
+  // before; without it, a message sent mid-turn goes in at once and steers the turn in progress.
+  | { type: 'prompt'; agentId: string; text: string; images?: { id: string; mime: string }[]; later?: boolean }
+  // Takes the `index`th waiting message back.
+  | { type: 'unqueue'; agentId: string; index: number }
   // Ask for a picture from an agent's conversation. It comes back as `image` messages.
   | { type: 'image'; agentId: string; id: string }
   // Ask for a file an agent sent. It comes back as `file` messages.

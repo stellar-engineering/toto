@@ -69,6 +69,8 @@ type Connection = {
   software?: { version: string; latest?: string; updating: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
+  /** What is waiting to be said to each chat agent when its turn ends, by agent id. */
+  queued: Record<string, { text: string; images?: ImageRef[] }[]>;
   /** Words each chat agent is writing now, by agent id, before its whole message arrives. */
   live: Record<string, string>;
   /** A job the Toto is doing (an update, a plugin install), or one that failed lately. */
@@ -107,8 +109,8 @@ type Connection = {
   /** Fetches a file an agent sent. It arrives in `pictures`, by its id; `dropPicture` lets go of it. */
   wantFile: (agentId: string, file: FileRef) => void;
   dropPicture: (id: string) => void;
-  /** Says something to an agent, with any pictures to go with it. */
-  say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[]) => void;
+  /** Says something to an agent, with any pictures to go with it. With `later`, and the agent mid-turn, it waits for the turn to end; otherwise it steers the turn. */
+  say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[], later?: boolean) => void;
 };
 
 export type Trying = { phase: Route | 'waiting'; why?: Unreachable | 'lost'; tries: number };
@@ -186,6 +188,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [plugins, setPlugins] = useState<Plugin[]>();
   const [progress, setProgress] = useState<Progress>();
   const [live, setLive] = useState<Connection['live']>({});
+  const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
@@ -247,6 +250,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setPending(undefined);
         setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
+        break;
+      case 'queue':
+        setQueued((all) => ({ ...all, [msg.agentId]: msg.items }));
         break;
       case 'delta':
         // Only once the history is in; and never more than a screenful, which the whole message then replaces.
@@ -382,6 +388,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setPlugins(undefined);
     setProgress(undefined);
     setLive({});
+    setQueued({});
     setPluginLogin(undefined);
     setSoftware(undefined);
     setPhones(undefined);
@@ -491,7 +498,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       return rest;
     });
 
-  const say: Connection['say'] = (agentId, text, sending = []) => {
+  const say: Connection['say'] = (agentId, text, sending = [], later) => {
     const images = sending.map((picture) => {
       const id = bytesToHex(getRandomValues(new Uint8Array(8)));
       // In pieces small enough for the relay, which will not pass a large message.
@@ -499,7 +506,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       for (let at = 0; at < of; at++) post({ type: 'upload', id, at, of, data: picture.base64.slice(at * PIECE, (at + 1) * PIECE) });
       return { id, mime: picture.mime };
     });
-    post({ type: 'prompt', agentId, text, ...(images.length ? { images } : null) });
+    post({ type: 'prompt', agentId, text, ...(images.length ? { images } : null), ...(later ? { later } : null) });
   };
 
   const request = (message: ClientMessage) => {
@@ -515,7 +522,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, live, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );

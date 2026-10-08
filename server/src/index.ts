@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { hostname, networkInterfaces } from 'node:os';
 import { join, resolve } from 'node:path';
 import { WebSocketServer } from 'ws';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Mode, Project, ServerMessage } from '../../protocol.ts';
 import { MAX_FILE, MAX_IMAGE, dropImages, readFile, readImage, saveFile, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
@@ -244,6 +244,33 @@ const delta = (agent: AgentRecord, text: string) => {
   deltas.set(agent.id, held);
 };
 
+// What people have asked to say to an agent once its turn ends. ponytail: kept in memory, so a
+// restart of the server forgets it; write it beside the conversation if that proves to matter.
+const queues = new Map<string, { text: string; images: ImageRef[] }[]>();
+const MAX_QUEUED = 10;
+const tellQueue = (agentId: string) =>
+  broadcast({ type: 'queue', agentId, items: (queues.get(agentId) ?? []).map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
+
+/** Says something to an agent now: shows it in the conversation, and gives it to the agent. */
+function deliver(agent: AgentRecord, text: string, pictures: { ref: ImageRef; mime: string; data: string }[]) {
+  emit(agent, { type: 'user', text, ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
+  thinking.add(agent.id);
+  (running.get(agent.id) ?? start(agent)).send(text, pictures);
+}
+
+/** Its turn is over: says the next thing that was waiting, if anything was. Resolves to whether it did. */
+function sayNext(agent: AgentRecord) {
+  const next = queues.get(agent.id)?.shift();
+  if (!next) return false;
+  tellQueue(agent.id);
+  const pictures = next.images.flatMap((ref) => {
+    const bytes = readImage(agent.id, ref.id);
+    return bytes ? [{ ref, mime: ref.mime, data: bytes.toString('base64') }] : [];
+  });
+  deliver(agent, next.text, pictures);
+  return true;
+}
+
 const emit = (agent: AgentRecord, event: AgentEvent) => {
   // Whatever was being written comes before whatever happened next.
   flushDeltas(agent.id);
@@ -256,7 +283,8 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
     else notify('approval', agent);
   }
   if (event.type === 'done' || event.type === 'error') thinking.delete(agent.id);
-  if (event.type === 'done') notify('done', agent);
+  // One more thing waiting means it is not finished, so nobody needs telling it is.
+  if (event.type === 'done' && !sayNext(agent)) notify('done', agent);
 };
 
 // Approvals left open by a previous run have nobody to answer to any more.
@@ -326,6 +354,7 @@ const forget = (agent: AgentRecord) => {
   running.get(agent.id)?.stop();
   clearTimeout(deltas.get(agent.id)?.timer);
   deltas.delete(agent.id);
+  queues.delete(agent.id);
   logs.delete(agent.id);
   rmSync(logFile(agent.id), { force: true });
   dropImages(agent.id);
@@ -392,6 +421,7 @@ async function handle(msg: ClientMessage, ws: Client) {
       }
       send(ws, snapshot());
       for (const [agentId, log] of logs) for (const event of log) send(ws, { type: 'event', agentId, event });
+      for (const [agentId, items] of queues) if (items.length) send(ws, { type: 'queue', agentId, items: items.map(({ text, images }) => ({ text, ...(images.length ? { images } : null) })) });
       return send(ws, { type: 'synced' });
     case 'ping':
       return send(ws, { type: 'pong', name: state.name });
@@ -551,9 +581,19 @@ async function handle(msg: ClientMessage, ws: Client) {
       });
       if (sent.length && pictures.length < sent.length) throw new Error('A picture did not arrive whole, or is not one this Toto can take. Nothing was sent; try again.');
       if (!msg.text.trim() && !pictures.length) return;
-      emit(agent, { type: 'user', text: msg.text, ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
-      thinking.add(agent.id);
-      return void (running.get(agent.id) ?? start(agent)).send(msg.text, pictures);
+      if (msg.later === true && thinking.has(agent.id)) {
+        const waiting = queues.get(agent.id) ?? [];
+        if (waiting.length >= MAX_QUEUED) throw new Error('That is as many messages as can wait. Let it catch up first.');
+        queues.set(agent.id, [...waiting, { text: msg.text, images: pictures.map((p) => p.ref) }]);
+        return tellQueue(agent.id);
+      }
+      return deliver(agent, msg.text, pictures);
+    }
+    case 'unqueue': {
+      const waiting = queues.get(msg.agentId);
+      if (!agent || !waiting || !Number.isInteger(msg.index) || !waiting[msg.index]) return;
+      waiting.splice(msg.index, 1);
+      return tellQueue(agent.id);
     }
     case 'approve':
       if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true, answersOf(msg.answers));
