@@ -5,7 +5,7 @@ import { useConnection } from './connection';
 import { Face, type Mood } from './face';
 import { keysFromToken } from './secure';
 import { gutter } from './theme';
-import { Btn, Field, Txt, styles } from './ui';
+import { Btn, Field, Txt, styles, Waiting } from './ui';
 
 type Step =
   | { at: 'starting' }
@@ -132,12 +132,16 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: gutter, paddingVertical: 24, gap: 16 }}>
       <Face mood={mood} size={34} nose />
 
-      {step.at === 'starting' && <Txt tone="ghost">Checking Bluetooth…</Txt>}
+      {step.at === 'starting' && <Waiting>Checking Bluetooth…</Waiting>}
       {step.at === 'cannot' && <Txt>{step.why}</Txt>}
 
       {step.at === 'looking' && (
         <>
-          <Txt>{step.found.length ? 'Found nearby. Tap the one to set up.' : 'Looking for a Toto nearby. Plug it in and wait a minute for it to start.'}</Txt>
+          {step.found.length ? (
+            <Txt>Found nearby. Tap the one to set up.</Txt>
+          ) : (
+            <Waiting hint="A Toto takes about a minute to start after it is plugged in. One that already has an owner only shows up in pairing mode." after={20}>Looking for a Toto nearby…</Waiting>
+          )}
           {step.found.map((toto, i) => (
             <Pressable key={toto.id} onPress={() => meet(toto)} style={[styles.row, { paddingHorizontal: 0 }]} accessibilityRole="button">
               <Txt weight="bold">{step.found.length > 1 ? `Toto ${i + 1}` : 'A Toto'}</Txt>
@@ -147,7 +151,7 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
         </>
       )}
 
-      {step.at === 'meeting' && <Txt tone="ghost">Connecting to it…</Txt>}
+      {step.at === 'meeting' && <Waiting hint="Hold your phone near it." after={8}>Connecting to it over Bluetooth…</Waiting>}
 
       {step.at === 'met' && (
         <>
@@ -169,7 +173,7 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
               <Btn label="Pick another" onPress={() => { setProblem(''); setStep({ ...step, chosen: undefined }); }} />
             </>
           ) : step.list === null ? (
-            <Txt tone="ghost">It is looking for networks…</Txt>
+            <Waiting hint="A Toto that has only just started needs a few seconds to see what is around it." after={6}>It is looking for networks…</Waiting>
           ) : (
             step.list.map((network) => (
               <Pressable key={network.ssid} onPress={() => { setProblem(''); setPassword(''); setStep({ ...step, chosen: network }); }} style={[styles.row, { paddingHorizontal: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }]} accessibilityRole="button">
@@ -181,8 +185,8 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
         </>
       )}
 
-      {step.at === 'joining' && <Txt tone="ghost">It is joining {step.ssid}. This can take up to a minute.</Txt>}
-      {step.at === 'adding' && <Txt tone="ghost">Adding it…</Txt>}
+      {step.at === 'joining' && <Waiting hint="This can take up to a minute. If the password is wrong, it will say so." after={0}>It is joining {step.ssid}…</Waiting>}
+      {step.at === 'adding' && <Waiting hint="Collecting its keys, then finding it on your network." after={4}>Adding it…</Waiting>}
       {step.at === 'failed' && <Txt tone="raspberry">{step.why}</Txt>}
 
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>

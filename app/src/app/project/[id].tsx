@@ -4,7 +4,7 @@ import { Alert, FlatList, Pressable, View } from 'react-native';
 import { useConnection, type Activity, type Agent } from '../../connection';
 import { Face } from '../../face';
 import { moodOf } from '../../moods';
-import { Btn, Check, Empty, Field, Header, Screen, StatusLine, Txt, styles } from '../../ui';
+import { Btn, Check, Empty, Field, Header, Reaching, Screen, StatusLine, Txt, Waiting, styles } from '../../ui';
 
 const STATE: Record<Activity, { glyph: string; tone: 'ghost' | 'signal' | 'amber' | 'raspberry'; label: string }> = {
   idle: { glyph: '○', tone: 'ghost', label: 'idle' },
@@ -32,12 +32,20 @@ function AgentRow({ agent }: { agent: Agent }) {
 }
 
 function StartAgent({ projectId }: { projectId: string }) {
-  const { request, busy } = useConnection();
+  const { request, busy, status } = useConnection();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [worktree, setWorktree] = useState(true);
   const [auto, setAuto] = useState(false);
   const [terminal, setTerminal] = useState(false);
+  // Nothing can be asked of a Toto that is not there, and asking would silently do nothing.
+  if (status !== 'open')
+    return (
+      <View style={styles.row} accessibilityState={{ disabled: true }}>
+        <Txt tone="ghost">+ Start an agent</Txt>
+        <Txt tone="ghost" small>Once your Toto is reached again.</Txt>
+      </View>
+    );
   if (!open)
     return (
       <Pressable onPress={() => setOpen(true)} style={styles.row} accessibilityRole="button">
@@ -66,7 +74,7 @@ function StartAgent({ projectId }: { projectId: string }) {
 
 export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, agents, post, node } = useConnection();
+  const { projects, agents, post, node, loaded, pending } = useConnection();
   const router = useRouter();
   const project = projects.find((p) => p.id === id);
 
@@ -83,19 +91,33 @@ export default function ProjectScreen() {
       },
     ]);
 
+  const starting = pending?.type === 'create_agent' && pending.projectId === id ? pending : undefined;
+
   return (
     <Screen>
-      <Header parent={node?.name ?? 'toto'} title={project?.name ?? 'gone'} />
+      <Header parent={node?.name ?? 'toto'} title={project?.name ?? (loaded ? 'gone' : '…')} />
       <View style={{ flex: 1 }}>
+        {!loaded ? <Reaching what="this project" /> : !project ? <Empty mood="offline">This project is no longer on this Toto. It may have been deleted from another phone.</Empty> : (
         <FlatList
           data={agents.filter((a) => a.projectId === id)}
           keyExtractor={(a) => a.id}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <AgentRow agent={item} />}
-          ListEmptyComponent={<Empty mood="resting">Nobody is working here yet. Start an agent and give it something to do.</Empty>}
+          ListEmptyComponent={starting ? null : <Empty mood="resting">Nobody is working here yet. Start an agent and give it something to do.</Empty>}
           ListFooterComponent={
             <>
-              <StartAgent projectId={id} />
+              {starting ? (
+                // Where the agent will be, while its branch and session are made.
+                <View style={[styles.row, { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }]}>
+                  <View style={styles.faceCol}><Face mood="working" size={13} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Txt weight="bold" numberOfLines={1}>{starting.name}</Txt>
+                    <Waiting hint={starting.worktree ? 'Making its own copy of a large repository takes a little while.' : undefined}>Starting…</Waiting>
+                  </View>
+                </View>
+              ) : (
+                <StartAgent projectId={id} />
+              )}
               {project?.lan !== undefined && (
                 <View style={[styles.row, { paddingVertical: 8 }]}>
                   <Check label="Let agents reach devices on your home network" value={project.lan} onChange={(allow) => post({ type: 'set_lan', projectId: id, allow })} />
@@ -109,6 +131,7 @@ export default function ProjectScreen() {
             </>
           }
         />
+        )}
       </View>
       <StatusLine />
     </Screen>

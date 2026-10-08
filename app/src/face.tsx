@@ -18,7 +18,7 @@ const INK: Record<Mood, string> = {
 
 // Asked once, shared by every face: has this person asked their phone for less motion?
 let stillPlease: Promise<boolean> | undefined;
-const prefersStill = () => (stillPlease ??= AccessibilityInfo.isReduceMotionEnabled().catch(() => false));
+export const prefersStill = () => (stillPlease ??= AccessibilityInfo.isReduceMotionEnabled().catch(() => false));
 
 type Props = {
   mood: Mood;

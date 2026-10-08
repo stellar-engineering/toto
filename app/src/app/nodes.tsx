@@ -6,7 +6,7 @@ import { ping, type Route } from '../link';
 import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { Face } from '../face';
-import { Header, Screen, Txt, styles } from '../ui';
+import { Header, Screen, Spinner, Txt, styles } from '../ui';
 
 const CHECK_EVERY = 15_000;
 type Reach = Route | 'offline' | 'checking';
@@ -22,7 +22,10 @@ function NodeRow({ node, reach, current, onPress }: { node: Node; reach: Reach; 
         <Txt tone="ghost" small numberOfLines={1}>{node.address.replace(/^wss?:\/\//, '')}</Txt>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
-        <Txt tone={online ? 'signal' : 'ghost'}>{said}</Txt>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {reach === 'checking' && <Spinner />}
+          <Txt tone={online ? 'signal' : 'ghost'}>{said}</Txt>
+        </View>
         {current && <Txt tone="amber" small>showing now</Txt>}
       </View>
     </Pressable>

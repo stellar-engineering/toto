@@ -27,9 +27,12 @@ type Handlers = {
   onMessage: (message: ServerMessage, link: Link) => void;
   /** The line was up and has gone. Not called for a line we closed or cancelled ourselves. */
   onLost?: () => void;
+  /** A route is about to be tried, so whoever is waiting can be told which. */
+  onTry?: (via: Route) => void;
 };
 
 function attempt(url: string, psk: Uint8Array, via: Route, handlers: Handlers, done: (result: Link | Unreachable) => void) {
+  handlers.onTry?.(via);
   const ws = new WebSocket(url);
   const nonce = bytesToHex(getRandomValues(new Uint8Array(NONCE_BYTES)));
   let secure: ReturnType<typeof session> | undefined;

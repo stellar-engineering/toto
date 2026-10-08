@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
-import { type Link, type Route, type Settings, deviceIdOf, ping, reach } from './link';
+import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
 export type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
@@ -44,9 +44,16 @@ type Connection = {
   /** Stops knowing the current Toto, and moves to another if there is one. */
   forget: () => void;
   post: (message: ClientMessage) => void;
-  /** Like `post`, for requests that take a while. `busy` stays true until the server answers. */
+  /** Like `post`, for requests that take a while. `pending` is that request until the server answers. */
   request: (message: ClientMessage) => void;
+  pending?: ClientMessage;
   busy: boolean;
+  /** While not open: what is being tried to reach the Toto, why the last try failed, and how many have. */
+  trying: Trying;
+  /** The Toto has said what it holds since we started showing it. Until then, empty lists mean "not known yet". */
+  loaded: boolean;
+  /** Every conversation has been replayed since we started showing it. */
+  synced: boolean;
   projects: Project[];
   agents: Agent[];
   /** How this Toto's agents are signed in to Claude. Undefined until it has said. */
@@ -68,6 +75,8 @@ type Connection = {
   /** The screen of each terminal agent this device has open, by agent id. */
   screens: Record<string, TermScreen>;
 };
+
+export type Trying = { phase: Route | 'waiting'; why?: Unreachable | 'lost'; tries: number };
 
 const Context = createContext<Connection | null>(null);
 
@@ -126,7 +135,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState(load);
   const node = saved.nodes.find((n) => n.id === saved.active) ?? saved.nodes[0];
   const [status, setStatus] = useState<Connection['status']>(node ? 'reconnecting' : 'setup');
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<ClientMessage>();
+  const [trying, setTrying] = useState<Trying>({ phase: 'local', tries: 0 });
+  const [loaded, setLoaded] = useState(false);
+  const [synced, setSynced] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sshKey, setSshKey] = useState<string>();
@@ -143,6 +155,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const abandon = useRef<() => void>(() => {});
   const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
   const caughtUp = useRef(false);
+  // Histories being replayed. They are shown all at once when the replay ends, so a reconnect
+  // swaps the old conversation for the new one instead of emptying the screen and refilling it.
+  const replay = useRef<Connection['events']>({});
+  const tries = useRef(0);
   // A name chosen while adding a Toto, to give the device once we are talking to it.
   const naming = useRef<{ id: string; name: string } | undefined>(undefined);
 
@@ -171,12 +187,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           if (was !== msg.claude) setClaudeLogin(undefined);
           return msg.claude;
         });
-        setBusy(false);
+        setPending(undefined);
+        setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
         break;
       case 'event':
-        // ponytail: copies the agent's history per event, which is slow when replaying a long one.
-        // Batch the replay when that shows.
+        if (!caughtUp.current) {
+          (replay.current[msg.agentId] ??= []).push(msg.event);
+          break;
+        }
         setEvents((all) => ({ ...all, [msg.agentId]: [...(all[msg.agentId] ?? []), msg.event] }));
         // An agent has just stopped to ask. Worth a tap on the wrist, but not for old history.
         if (caughtUp.current && msg.event.type === 'approval_request')
@@ -184,6 +203,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         break;
       case 'synced':
         caughtUp.current = true;
+        setEvents(replay.current);
+        replay.current = {};
+        setSynced(true);
         if (naming.current?.id === to.id) {
           post({ type: 'rename_device', name: naming.current.name });
           naming.current = undefined;
@@ -192,14 +214,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         pushToken().then((token) => token && post({ type: 'register_push', token }));
         break;
       case 'claude_login':
-        setBusy(false);
+        setPending(undefined);
         setClaudeLogin(msg.url);
         break;
       case 'term':
         setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));
         break;
       case 'failed':
-        setBusy(false);
+        setPending(undefined);
         Alert.alert('That did not work', msg.message);
         break;
     }
@@ -210,22 +232,30 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     abandon.current();
     clearTimeout(retry.current);
     let wanted = true;
-    const again = () => {
+    const again = (why: Trying['why']) => {
       if (!wanted) return;
       link.current = null;
-      setBusy(false);
+      setPending(undefined);
+      setTrying({ phase: 'waiting', why, tries: ++tries.current });
       setStatus('reconnecting');
       retry.current = setTimeout(() => wanted && dial(to), RETRY_AFTER);
     };
     const cancel = reach(
       to,
-      { first: { type: 'sync' }, onMessage: (msg) => wanted && receive(to, msg), onLost: again },
+      {
+        first: { type: 'sync' },
+        onMessage: (msg) => wanted && receive(to, msg),
+        onLost: () => again('lost'),
+        onTry: (via) => wanted && setTrying((was) => ({ ...was, phase: via })),
+      },
       (result) => {
         if (!wanted) return typeof result === 'string' ? undefined : result.close();
-        if (typeof result === 'string') return again();
+        if (typeof result === 'string') return again(result);
         link.current = result;
+        tries.current = 0;
+        // The device is about to replay every history. What is on screen stays until it has.
         caughtUp.current = false;
-        setEvents({}); // the device is about to replay every history
+        replay.current = {};
         setScreens({});
         setVia(result.via);
         setStatus('open');
@@ -243,7 +273,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     abandon.current = () => {};
     clearTimeout(retry.current);
     link.current = null;
-    setBusy(false);
+    setPending(undefined);
+    tries.current = 0;
+    setTrying({ phase: 'local', tries: 0 });
+    setLoaded(false);
+    setSynced(false);
     setProjects([]);
     setAgents([]);
     setEvents({});
@@ -306,7 +340,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const request = (message: ClientMessage) => {
     if (!link.current) return;
-    setBusy(true);
+    setPending(message);
     post(message);
   };
 
@@ -317,7 +351,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, busy, projects, agents, claude, claudeLogin, software, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, software, identity, sshKey, events, activity, tally, screens }}>
       {children}
     </Context.Provider>
   );

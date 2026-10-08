@@ -4,7 +4,7 @@ import { parse, withCursor, type Span } from './ansi';
 import { useConnection, type TermKey } from './connection';
 import { FILLER, typed } from './keys';
 import { color, font, gutter, tap } from './theme';
-import { Txt } from './ui';
+import { Txt, Waiting } from './ui';
 
 const FONT_SIZE = 12;
 // IBM Plex Mono's advance width is 0.6em.
@@ -137,7 +137,8 @@ export function Terminal({ agentId }: { agentId: string }) {
           {term ? (
             lines.map((line, i) => <Line key={i} spans={line.spans} id={line.id} />)
           ) : (
-            <Txt tone="ghost">{online ? 'Opening the session…' : 'Reconnecting to your Toto…'}</Txt>
+            // Keyed, so the seconds start again when the reason for waiting changes.
+            <Waiting key={String(online)} hint={online ? 'The session is taking longer than usual to answer.' : undefined} after={6}>{online ? 'Opening the session…' : 'Reconnecting to your Toto…'}</Waiting>
           )}
         </Pressable>
       </ScrollView>

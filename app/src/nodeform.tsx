@@ -40,10 +40,11 @@ export function NodeForm({ onAdded, onCancel, onTrying, onNearby }: { onAdded?: 
       <Field label="token" value={token} onChangeText={setToken} placeholder="printed when Toto was installed" secureTextEntry />
       <Field label="relay" value={relay} onChangeText={setRelay} placeholder="for when you are away (optional)" keyboardType="url" />
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
-        <Btn kind="primary" label={trying ? 'Looking for it…' : 'Connect'} onPress={add} disabled={trying || !address.trim() || !token.trim()} style={{ flex: 1 }} />
+        <Btn kind="primary" label={trying ? 'Looking for it…' : 'Connect'} onPress={add} busy={trying} disabled={!address.trim() || !token.trim()} style={{ flex: 1 }} />
         {onCancel && <Btn label="Cancel" onPress={onCancel} />}
       </View>
-      <Txt tone="raspberry" style={{ marginTop: 16, minHeight: 44 }} accessibilityLiveRegion="polite">{problem}</Txt>
+      {/* Checking the local network and then the relay can take a quarter of a minute. */}
+      <Txt tone={trying ? 'ghost' : 'raspberry'} small={trying} style={{ marginTop: 16, minHeight: 44 }} accessibilityLiveRegion="polite">{trying ? 'Trying its address on this network, then the relay. This takes up to fifteen seconds.' : problem}</Txt>
     </View>
   );
 }
