@@ -1,7 +1,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Dimensions, Image, Modal, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnection, type ImageRef } from './connection';
 import { savePicture } from './save';
@@ -83,12 +83,98 @@ function Lightbox({ image, data, onClose }: { image: ImageRef; data: string | un
           <Btn label={saving ? 'Saving…' : 'Save'} busy={saving} onPress={save} disabled={!data} style={local.small} />
           <Btn label="Close" onPress={onClose} style={local.small} />
         </View>
-        {/* Anywhere on the picture closes it too, as a lightbox should. */}
-        <Pressable onPress={onClose} style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel="Close picture">
-          {!!data && <Image source={{ uri: `data:${image.mime};base64,${data}` }} style={{ flex: 1 }} resizeMode="contain" accessibilityIgnoresInvertColors />}
-        </Pressable>
+        {/* Anywhere on the picture closes it too, as a lightbox should; and it can be pinched larger. */}
+        {!!data && <Zoomable uri={`data:${image.mime};base64,${data}`} onTap={onClose} />}
       </View>
     </Modal>
+  );
+}
+
+type View2D = { scale: number; x: number; y: number };
+const WHOLE: View2D = { scale: 1, x: 0, y: 0 };
+const MOST = 6;
+const clamp = (n: number, low: number, high: number) => Math.min(high, Math.max(low, n));
+
+/**
+ * The state of a pinch and drag on a picture, and the responder that reads the fingers. A class so
+ * that what changes under the fingers can change without waiting for a render. Written with the
+ * responder system React Native already has, not a gesture library, which would be native code to
+ * add for one screen.
+ */
+class Zoom {
+  view = WHOLE;
+  // Where the picture's area is on screen, to pinch about the fingers and not about its middle.
+  area = { x: 0, y: 0, width: Dimensions.get('window').width, height: Dimensions.get('window').height };
+  // How things stood when the fingers last changed in number, and where they were.
+  private from?: { fingers: number; mid: { x: number; y: number }; gap: number; view: View2D };
+
+  constructor(private show: (view: View2D) => void) {}
+
+  put(view: View2D) {
+    this.view = view;
+    this.show(view);
+  }
+
+  responder = PanResponder.create({
+    // Taps are the picture's own; this only takes over for two fingers, or a drag once enlarged.
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (e, g) => e.nativeEvent.touches.length >= 2 || (this.view.scale > 1 && Math.abs(g.dx) + Math.abs(g.dy) > 4),
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: (e) => {
+      const t = e.nativeEvent.touches;
+      if (!t.length) return;
+      const two = t.length >= 2;
+      const mid = two ? { x: (t[0].pageX + t[1].pageX) / 2, y: (t[0].pageY + t[1].pageY) / 2 } : { x: t[0].pageX, y: t[0].pageY };
+      const gap = two ? Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY) : 0;
+      const fingers = two ? 2 : 1;
+      // A finger put down or lifted starts again from where things stand, so the picture does not jump.
+      if (this.from?.fingers !== fingers) {
+        this.from = { fingers, mid, gap, view: this.view };
+        return;
+      }
+      const f = this.from;
+      const scale = two ? clamp((f.view.scale * gap) / Math.max(f.gap, 1), 1, MOST) : f.view.scale;
+      // Keeps the point that was under the fingers under them: screen = centre + shift + scale * point.
+      const cx = this.area.x + this.area.width / 2;
+      const cy = this.area.y + this.area.height / 2;
+      const ratio = scale / f.view.scale;
+      const reach = { x: ((scale - 1) * this.area.width) / 2, y: ((scale - 1) * this.area.height) / 2 };
+      this.put({
+        scale,
+        x: clamp(mid.x - cx - ratio * (f.mid.x - cx - f.view.x), -reach.x, reach.x),
+        y: clamp(mid.y - cy - ratio * (f.mid.y - cy - f.view.y), -reach.y, reach.y),
+      });
+    },
+    onPanResponderRelease: () => {
+      this.from = undefined;
+      if (this.view.scale < 1.05) this.put(WHOLE);
+    },
+    onPanResponderTerminate: () => {
+      this.from = undefined;
+    },
+  });
+}
+
+/** A picture that can be pinched larger and dragged about while it is. A tap puts it back if it was enlarged, and otherwise is `onTap`. */
+function Zoomable({ uri, onTap }: { uri: string; onTap: () => void }) {
+  const [view, setView] = useState(WHOLE);
+  const [zoom] = useState(() => new Zoom(setView));
+  const box = useRef<View>(null);
+  return (
+    <View
+      ref={box}
+      style={{ flex: 1, overflow: 'hidden' }}
+      onLayout={() => box.current?.measureInWindow((x, y, width, height) => (zoom.area = { x, y, width, height }))}
+      {...zoom.responder.panHandlers}>
+      <Pressable onPress={() => (zoom.view.scale > 1 ? zoom.put(WHOLE) : onTap())} style={{ flex: 1 }} accessibilityRole="button" accessibilityLabel="Picture. Pinch to zoom. Tap to close.">
+        <Image
+          source={{ uri }}
+          style={{ flex: 1, transform: [{ translateX: view.x }, { translateY: view.y }, { scale: view.scale }] }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </Pressable>
+    </View>
   );
 }
 
