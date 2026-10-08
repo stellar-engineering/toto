@@ -22,11 +22,29 @@ const BIGGEST = 20 * 1024 * 1024;
 export const isName = (n) => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 const isPackage = (p) => typeof p === 'string' && /^[a-z0-9][a-z0-9.+-]{0,60}$/.test(p);
 
+const isArgv = (a) => Array.isArray(a) && a.length >= 1 && a.length <= 20 && a.every((s) => typeof s === 'string' && s.length <= 200);
+const isPattern = (s) => {
+  try {
+    return typeof s === 'string' && s.length <= 200 && !!new RegExp(s);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Whether `login` is a sign-in the server may run for the person, as itself and not as root: a
+ * command that shows a web address and a code, then a command that prints the token it earned.
+ * The token goes to agents in the environment variable `env`, which must end like a secret's name.
+ */
+export const isLogin = (l) =>
+  isArgv(l?.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code) && /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l.env) && (l.enter === undefined || typeof l.enter === 'boolean');
+
 /** Throws unless a manifest is for plugin `name` and asks only for what a plugin may ask for. */
 export function checkManifest(m, name) {
   if (m?.name !== name) throw new Error(`That bundle is not the ${name} plugin. Nothing was installed.`);
   if (!/^\d+\.\d+\.\d+$/.test(m.version)) throw new Error('The plugin has no valid version. Nothing was installed.');
   if (m.apt !== undefined && !(Array.isArray(m.apt) && m.apt.length <= 10 && m.apt.every(isPackage))) throw new Error('The plugin asks for packages that are not valid. Nothing was installed.');
+  if (m.login !== undefined && !isLogin(m.login)) throw new Error('The plugin has a sign-in that is not valid. Nothing was installed.');
 }
 
 /**

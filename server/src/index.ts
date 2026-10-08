@@ -11,6 +11,7 @@ import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.t
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
+import { cancelPluginLogin, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
@@ -25,6 +26,7 @@ import {
   startUpdate,
   removeProject,
   removeWorktree,
+  secretNames,
   setLan,
   wifiCountry,
   wifiJoin,
@@ -87,6 +89,10 @@ const useCredential = (c: Credential | undefined) => {
   delete process.env[c.kind === 'api_key' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY'];
 };
 if (existsSync(credentialFile)) useCredential(JSON.parse(readFileSync(credentialFile, 'utf8')));
+// Plugins' sign-ins are kept the same way, and given to agents as the variables the plugins name.
+const plugged = () => loginNames().forEach((name) => secretNames.add(name));
+plugged();
+useTokens();
 const claude = (): ClaudeAccount => (process.env.CLAUDE_CODE_OAUTH_TOKEN ? 'subscription' : process.env.ANTHROPIC_API_KEY ? 'api_key' : 'none');
 // ponytail: every log is held in memory and replayed whole on connect. Page it when logs get long.
 const logs = new Map<string, AgentEvent[]>(
@@ -121,6 +127,8 @@ const version: string = JSON.parse(readFileSync(new URL('../package.json', impor
 const RELEASES = 'https://github.com/stellar-engineering/toto/releases/latest/download';
 let latest: string | undefined;
 let updating = false;
+// What the relay lists as plugins; only a hint, like `latest`.
+let offered: Awaited<ReturnType<typeof listed>> = [];
 async function checkForUpdate() {
   const res = await fetch(`${RELEASES}/version`, { signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
   const found = res?.ok ? (await res.text()).trim() : undefined;
@@ -129,6 +137,9 @@ async function checkForUpdate() {
   latest = found;
   broadcast(snapshot());
 }
+const checkForPlugins = async () => {
+  offered = await listed();
+};
 
 const snapshot = (): ServerMessage => ({
   type: 'state',
@@ -144,6 +155,7 @@ const snapshot = (): ServerMessage => ({
   phones: livePhones().map(({ id, name, added, invite }) => ({ id, name, added, pending: !!invite })),
   // Each client is told the truth about itself as its copy is sent (see accept).
   owner: true,
+  plugins: describe(installed(), offered),
 });
 
 /** The phones this device is shared with, less any invitation that ran out unused. */
@@ -264,6 +276,22 @@ async function signIn(credential: Credential | undefined) {
   // Agents already running hold the old sign-in; stopping them means their next turn starts with the new one.
   for (const proc of running.values()) proc.stop();
   commit();
+}
+
+/** After a plugin or its sign-in changes: agents get the new variables, and ones not mid-turn start over with the new plugins. */
+async function refreshAgents() {
+  plugged();
+  await Promise.all(state.projects.map((p) => installEnv(p.user).catch(() => {})));
+  for (const [id, proc] of running) if (!thinking.has(id)) proc.stop();
+  broadcast(snapshot());
+}
+
+/** The plugin an owner's message names, if it is one that is installed. */
+function installedPlugin(ws: Client, name: unknown) {
+  if (ws.phone) throw new Error('Only the phone that set this Toto up can change its plugins.');
+  const found = isPluginName(name) ? installed().find((m) => m.name === name) : undefined;
+  if (!found) throw new Error('That plugin is not installed.');
+  return found;
 }
 
 async function handle(msg: ClientMessage, ws: Client) {
@@ -463,8 +491,36 @@ async function handle(msg: ClientMessage, ws: Client) {
           if (!(asked?.type === 'approval_request' && asksUser(asked.name))) running.get(agent.id)?.resolve(id, true);
         }
       return;
+    case 'plugin_install':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can change its plugins.');
+      if (!isPluginName(msg.name)) throw new Error('That is not a plugin name.');
+      await installPlugin(msg.name);
+      return refreshAgents();
+    case 'plugin_remove': {
+      const { name, login } = installedPlugin(ws, msg.name);
+      await cancelPluginLogin(name);
+      if (login) keepToken(login.env, undefined);
+      await removePlugin(name);
+      return refreshAgents();
+    }
+    case 'plugin_login': {
+      const { name, login } = installedPlugin(ws, msg.name);
+      if (!login) throw new Error('That plugin has no sign-in.');
+      const shown = await startPluginLogin(login, name, (token, why) => {
+        if (!token) return send(ws, { type: 'failed', message: why ?? 'The sign-in did not finish.' });
+        keepToken(login.env, token);
+        void refreshAgents();
+      });
+      return send(ws, { type: 'plugin_login', name, ...shown });
+    }
+    case 'plugin_logout': {
+      const { name, login } = installedPlugin(ws, msg.name);
+      await cancelPluginLogin(name);
+      if (login) keepToken(login.env, undefined);
+      return refreshAgents();
+    }
     case 'check_update':
-      await checkForUpdate();
+      await Promise.all([checkForUpdate(), checkForPlugins()]);
       return send(ws, snapshot());
     case 'update': {
       // The install restarts the server, which would cut off anything mid-thought.
@@ -596,7 +652,7 @@ function dialRelay() {
     }
     const c = msg.c;
     // The relay passing on that a release was published. Worth a look; nothing is taken on its word.
-    if (c === undefined && msg.t === 'update') return void checkForUpdate();
+    if (c === undefined && msg.t === 'update') return void Promise.all([checkForUpdate(), checkForPlugins()]);
     if (typeof c !== 'string') return;
     if (msg.t === 'close') {
       conns.get(c)?.closed();
@@ -756,4 +812,5 @@ wss.on('listening', () => {
 
 // Look for a release now and once a day, so a Toto the relay never reaches still finds out.
 void checkForUpdate();
+void checkForPlugins();
 setInterval(checkForUpdate, 24 * 60 * 60_000).unref();

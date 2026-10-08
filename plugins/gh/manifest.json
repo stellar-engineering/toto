@@ -2,5 +2,31 @@
   "name": "gh",
   "version": "1.0.0",
   "description": "GitHub's command line, for agents: pull requests, issues and checks.",
-  "apt": ["gh"]
+  "apt": [
+    "gh"
+  ],
+  "login": {
+    "run": [
+      "gh",
+      "auth",
+      "login",
+      "--hostname",
+      "github.com",
+      "--git-protocol",
+      "https",
+      "--web",
+      "--insecure-storage"
+    ],
+    "url": "https://github\\.com/login/device",
+    "code": "[A-Z0-9]{4}-[A-Z0-9]{4}",
+    "enter": true,
+    "token": [
+      "gh",
+      "auth",
+      "token",
+      "--hostname",
+      "github.com"
+    ],
+    "env": "GH_TOKEN"
+  }
 }

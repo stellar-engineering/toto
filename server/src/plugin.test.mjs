@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkManifest, install, isName } from '../../bin/toto-plugin.mjs';
+import { checkManifest, install, isLogin, isName } from '../../bin/toto-plugin.mjs';
 
 const pem = (k) => k.export({ type: 'spki', format: 'pem' });
 const ours = generateKeyPairSync('ed25519');
@@ -67,4 +67,11 @@ test('names and packages that are not plain are refused', () => {
 test('the plugin key in the repository is one the installer can read', () => {
   assert.match(readFileSync(new URL('../../plugin.pub', import.meta.url), 'utf8'), /BEGIN PUBLIC KEY/);
   assert.notEqual(readFileSync(new URL('../../plugin.pub', import.meta.url), 'utf8'), readFileSync(new URL('../../release.pub', import.meta.url), 'utf8'));
+});
+
+test('the gh plugin in the repository is one the installer accepts, and a sign-in must name a secret', () => {
+  const gh = JSON.parse(readFileSync(new URL('../../plugins/gh/manifest.json', import.meta.url), 'utf8'));
+  checkManifest(gh, 'gh');
+  for (const env of ['PATH', 'LD_PRELOAD', 'gh_token', 'X', undefined]) assert.ok(!isLogin({ ...gh.login, env }), String(env));
+  assert.ok(!isLogin({ ...gh.login, url: '(' }) && !isLogin({ ...gh.login, run: 'gh auth login' }) && !isLogin({ ...gh.login, token: [] }));
 });

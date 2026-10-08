@@ -15,14 +15,15 @@ const PRIV = '/opt/toto/bin/toto-priv';
 // Credentials agents need. sudo logs any environment it is handed, so these never go through
 // it: they are written to a private file in each project user's home (over stdin), and every
 // command run as that user reads the file on its way in.
-const SECRETS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+// Plugins that need a sign-in add theirs (see plugins.ts).
+export const secretNames = new Set(['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
 const INSTALL_ENV = `umask 077 && cat > "$HOME/.toto-env"`;
 const WITH_ENV = `[ -r "$HOME/.toto-env" ] && . "$HOME/.toto-env"; exec "$@"`;
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 
 /** The credentials in `env` as a file a POSIX shell can source. */
 export const envFile = (env: Record<string, string | undefined>) =>
-  SECRETS.filter((name) => env[name]).map((name) => `export ${name}=${quote(env[name]!)}\n`).join('');
+  [...secretNames].filter((name) => env[name]).map((name) => `export ${name}=${quote(env[name]!)}\n`).join('');
 
 /**
  * The argv that runs `cmd` in `cwd` as a project's Linux user. The server cannot enter a project's
@@ -40,7 +41,7 @@ export function command(
 }
 
 /** Runs to completion, feeding `input` to stdin; on failure throws the most telling line of its stderr. */
-const sh = (file: string, args: string[], opts: { cwd?: string } = {}, input = '') => {
+export const sh = (file: string, args: string[], opts: { cwd?: string } = {}, input = '') => {
   const done = exec(file, args, { ...opts, timeout: 10 * 60_000 });
   done.child.stdin?.end(input);
   return done.catch((err) => {

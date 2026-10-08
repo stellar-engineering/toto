@@ -79,6 +79,13 @@ export type TermKey =
 /** A phone a device was shared with. `pending` until it has used its invitation. */
 export type Phone = { id: string; name: string; added: number; pending: boolean };
 
+/**
+ * A plugin: something that can be added to this device. `version` is set once it is installed;
+ * `latest` when the relay lists a newer one (only a hint: the device checks what it installs).
+ * `login` says it needs signing in to, and `signedIn` whether that has been done.
+ */
+export type Plugin = { name: string; description: string; version?: string; latest?: string; login?: boolean; signedIn?: boolean };
+
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
 
 /** Who agents' git commits are attributed to. */
@@ -104,6 +111,8 @@ export type ServerMessage =
       /** The phones this device has been shared with, and whether the phone being told is the one that owns it. */
       phones: Phone[];
       owner: boolean;
+      /** Absent from a Toto that predates plugins. */
+      plugins?: Plugin[];
     }
   // The answer to `share`: an invitation for one other phone, to hand over out of band (a QR code).
   // It works once, until `expires`, and only to collect that phone's own key.
@@ -112,6 +121,9 @@ export type ServerMessage =
   | { type: 'joined'; secret: string }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
+  // The answer to `plugin_login`: open `url` and enter `code` there. The device finishes by itself,
+  // and says so with a new `state`, or with `failed`.
+  | { type: 'plugin_login'; name: string; url: string; code: string }
   // The answer to `image`: piece `at` of `of`, as base64. A picture is too big to send in one message.
   | { type: 'image'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `ping`: this device is here, and this is what it is called.
@@ -145,6 +157,12 @@ export type ClientMessage =
   | { type: 'revoke'; phoneId: string }
   // The only thing an invitation may say: swap it for a key of this phone's own.
   | { type: 'join' }
+  // Owner only: add a plugin to this device (or bring it up to date), take it away, and sign in
+  // to it or out of it. Signing in is shared by every project on the device.
+  | { type: 'plugin_install'; name: string }
+  | { type: 'plugin_remove'; name: string }
+  | { type: 'plugin_login'; name: string }
+  | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
   | { type: 'update' }
   // This phone's push token, so the device can tell it when an agent needs attention.
