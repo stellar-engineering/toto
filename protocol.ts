@@ -150,6 +150,9 @@ export type ServerMessage =
   | { type: 'file'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `ping`: this device is here, and this is what it is called.
   | { type: 'pong'; name: string }
+  // Words a chat agent is writing now, a few at a time. Not part of its history: the whole `text`
+  // event follows, and replaces them.
+  | { type: 'delta'; agentId: string; text: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
   // Sent once after `sync` has been answered in full; events after this are happening now.
   | { type: 'synced' }

@@ -45,6 +45,15 @@ const blockText = (content: unknown, kept: boolean): string =>
       : '';
 
 /**
+ * The text Claude has just written, from a partial-message update, or nothing for any other message.
+ * Only the agent's own words: what a sub-agent writes (it has a parent tool call) is not shown as it goes.
+ */
+export const deltaOf = (msg: any): string | undefined =>
+  msg?.type === 'stream_event' && !msg.parent_tool_use_id && msg.event?.type === 'content_block_delta' && msg.event.delta?.type === 'text_delta' && typeof msg.event.delta.text === 'string'
+    ? msg.event.delta.text
+    : undefined;
+
+/**
  * Maps one parsed message from `claude --output-format stream-json` onto common events. With
  * `keep`, pictures in a tool's result (a screenshot, an image file it read) are kept and referred to.
  */
@@ -73,6 +82,8 @@ type Options = {
   onEvent: (e: AgentEvent) => void;
   /** Where pictures the agent produces are put. */
   keepImage?: Keep;
+  /** Words as Claude writes them, before the whole message arrives. */
+  onDelta?: (text: string) => void;
   /** The conversation's id, or undefined when the one asked for could not be resumed. */
   onSession: (id: string | undefined) => void;
   /** Fires once when the process is gone. */
@@ -80,12 +91,14 @@ type Options = {
 };
 
 /** Starts a long-lived Claude Code process. */
-export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onSession, onExit }: Options) {
+export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta, onSession, onExit }: Options) {
   const [file, args, opts] = command(user, cwd, process.env.TOTO_CLAUDE_BIN ?? 'claude', [
     '-p',
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
     '--verbose',
+    // Words as they are written, so a long answer can be read while it is still coming.
+    '--include-partial-messages',
     // Claude asks us before anything risky; the server decides whether that reaches the user.
     '--permission-mode', 'manual',
     '--permission-prompt-tool', 'stdio',
@@ -128,6 +141,8 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onSessio
       for (const [id, p] of pending) if (p.requestId === msg.request_id) settle(id, false);
       return;
     }
+    const delta = deltaOf(msg);
+    if (delta) return onDelta?.(delta);
     toEvents(msg, keepImage).forEach(onEvent);
   });
 

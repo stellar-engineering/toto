@@ -193,10 +193,16 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, activity, status, synced, post, say } = useConnection();
+  const { events: all, live: written, activity, status, synced, post, say } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
-  const rows = useMemo(() => toRows(events).reverse(), [events]);
+  // What the agent is writing now, as the newest message, until the whole of it arrives and takes its place.
+  const writing = written[agentId];
+  const rows = useMemo(() => {
+    const done = toRows(events).reverse();
+    if (writing) done.unshift({ kind: 'text', text: writing });
+    return done;
+  }, [events, writing]);
   const [draft, setDraft] = useState('');
   // In a browser the box does not grow with what is typed unless told how tall its text has become.
   const [tall, setTall] = useState(0);

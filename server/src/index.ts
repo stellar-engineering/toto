@@ -228,7 +228,25 @@ const notify = (kind: PushKind, agent: AgentRecord) =>
     save();
   });
 
+// Words as an agent writes them, sent a few times a second rather than word by word.
+const deltas = new Map<string, { text: string; timer?: ReturnType<typeof setTimeout> }>();
+const flushDeltas = (agentId: string) => {
+  const held = deltas.get(agentId);
+  if (!held) return;
+  clearTimeout(held.timer);
+  deltas.delete(agentId);
+  broadcast({ type: 'delta', agentId, text: held.text });
+};
+const delta = (agent: AgentRecord, text: string) => {
+  const held = deltas.get(agent.id) ?? { text: '' };
+  held.text += text;
+  held.timer ??= setTimeout(() => flushDeltas(agent.id), 80);
+  deltas.set(agent.id, held);
+};
+
 const emit = (agent: AgentRecord, event: AgentEvent) => {
+  // Whatever was being written comes before whatever happened next.
+  flushDeltas(agent.id);
   if (!logs.has(agent.id)) return; // deleted while its process was still winding down
   logs.get(agent.id)!.push(event);
   appendFileSync(logFile(agent.id), JSON.stringify(event) + '\n');
@@ -273,6 +291,7 @@ const start = (agent: AgentRecord) => {
       chains.set(agent.id, (chains.get(agent.id) ?? Promise.resolve()).then(() => withFiles(agent, project.user, e)).then((out) => emit(agent, out)).catch(console.error));
     },
     keepImage: (mime, data) => saveImage(agent.id, mime, data),
+    onDelta: (text) => delta(agent, text),
     onSession: (id) => {
       agent.sessionId = id;
       if (logs.has(agent.id)) commit();
@@ -305,6 +324,8 @@ const forget = (agent: AgentRecord) => {
   terminals.delete(agent.id);
   if (agent.harness === 'terminal') killTerminal(where(agent));
   running.get(agent.id)?.stop();
+  clearTimeout(deltas.get(agent.id)?.timer);
+  deltas.delete(agent.id);
   logs.delete(agent.id);
   rmSync(logFile(agent.id), { force: true });
   dropImages(agent.id);

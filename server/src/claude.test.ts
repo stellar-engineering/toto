@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent } from '../../protocol.ts';
-import { browserArgs, filesArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
+import { browserArgs, deltaOf, filesArgs, pluginArgs, startClaude, toEvents } from './claude.ts';
 import { execFileSync } from 'node:child_process';
 import { envFile, openApprovals } from './projects.ts';
 import { readFrame, tmuxKey } from './terminal.ts';
@@ -151,4 +151,16 @@ test('the browser plugin is given to Claude only where there is a Chromium to dr
   const mcp = JSON.parse(readFileSync(`${plugin}/.mcp.json`, 'utf8')).mcpServers.browser;
   assert.equal(mcp.command, 'chrome-devtools-mcp');
   assert.ok(readFileSync(`${plugin}/skills/browser/SKILL.md`, 'utf8').startsWith('---\nname: browser\n'));
+});
+
+test('only the words an agent is writing itself are passed on as it writes', () => {
+  const update = (event: object, extra: object = {}) => ({ type: 'stream_event', event, ...extra });
+  assert.equal(deltaOf(update({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hel' } })), 'Hel');
+  // Not a sub-agent's words, nor a tool's input being written, nor its thinking, nor anything that is not an update.
+  assert.equal(deltaOf(update({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } }, { parent_tool_use_id: 'toolu_1' })), undefined);
+  assert.equal(deltaOf(update({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{"a' } })), undefined);
+  assert.equal(deltaOf(update({ type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'hm' } })), undefined);
+  assert.equal(deltaOf(update({ type: 'message_start' })), undefined);
+  assert.equal(deltaOf({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello' }] } }), undefined);
+  assert.equal(deltaOf(undefined), undefined);
 });

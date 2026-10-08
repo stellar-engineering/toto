@@ -69,6 +69,8 @@ type Connection = {
   software?: { version: string; latest?: string; updating: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
+  /** Words each chat agent is writing now, by agent id, before its whole message arrives. */
+  live: Record<string, string>;
   /** A job the Toto is doing (an update, a plugin install), or one that failed lately. */
   progress?: Progress;
   /** What can be added to this Toto, and what has been. Undefined on a Toto too old to have plugins. */
@@ -183,6 +185,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [claudeLogin, setClaudeLogin] = useState<string>();
   const [plugins, setPlugins] = useState<Plugin[]>();
   const [progress, setProgress] = useState<Progress>();
+  const [live, setLive] = useState<Connection['live']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
   const [phones, setPhones] = useState<Phone[]>();
   const [owner, setOwner] = useState(true);
@@ -245,7 +248,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
         break;
+      case 'delta':
+        // Only once the history is in; and never more than a screenful, which the whole message then replaces.
+        if (caughtUp.current) setLive((all) => ({ ...all, [msg.agentId]: ((all[msg.agentId] ?? '') + msg.text).slice(-20_000) }));
+        break;
       case 'event':
+        if (msg.event.type === 'text' || msg.event.type === 'done' || msg.event.type === 'error') setLive(({ [msg.agentId]: _written, ...rest }) => rest);
         if (!caughtUp.current) {
           (replay.current[msg.agentId] ??= []).push(msg.event);
           break;
@@ -373,6 +381,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setClaudeLogin(undefined);
     setPlugins(undefined);
     setProgress(undefined);
+    setLive({});
     setPluginLogin(undefined);
     setSoftware(undefined);
     setPhones(undefined);
@@ -506,7 +515,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, live, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );
