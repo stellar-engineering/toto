@@ -161,6 +161,9 @@ export async function addWorktree(project: ProjectDir, agentId: string): Promise
   return dir;
 }
 
+/** Claude's questions for the user. Full auto cannot answer these: only the user knows. */
+export const asksUser = (name: string) => name === 'AskUserQuestion';
+
 /** Ids of the tool calls in `log` still waiting on an approval decision. */
 export function openApprovals(log: AgentEvent[]): string[] {
   const open = new Set<string>();

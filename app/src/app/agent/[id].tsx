@@ -53,11 +53,84 @@ function brief(input: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function ToolRow({ row, onDecide }: { row: Extract<Row, { kind: 'tool' }>; onDecide: (allow: boolean) => void }) {
+type Question = { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean };
+
+/** The questions in an AskUserQuestion call, if the input looks like one. */
+function questionsIn(input: unknown): Question[] {
+  const qs = (input as { questions?: unknown } | null)?.questions;
+  if (!Array.isArray(qs)) return [];
+  return qs.filter((q): q is Question => typeof q?.question === 'string' && Array.isArray(q.options));
+}
+
+/** Claude asking you something, with its options to tap. Answers go back keyed by the question's text. */
+function Questions({ name, questions, onDecide }: { name: string; questions: Question[]; onDecide: (allow: boolean, answers?: Record<string, string>) => void }) {
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [other, setOther] = useState<Record<string, string>>({});
+  const toggle = (q: Question, label: string) =>
+    setPicked((p) => {
+      const have = p[q.question] ?? [];
+      const next = q.multiSelect ? (have.includes(label) ? have.filter((l) => l !== label) : [...have, label]) : [label];
+      return { ...p, [q.question]: next };
+    });
+  // Typing your own answer replaces the options for a single choice, and joins them for several.
+  const answerTo = (q: Question) => {
+    const typed = other[q.question]?.trim();
+    const chosen = q.multiSelect || !typed ? (picked[q.question] ?? []) : [];
+    return [...chosen, ...(typed ? [typed] : [])].join(', ');
+  };
+  const done = questions.every((q) => answerTo(q));
+  const submit = () => onDecide(true, Object.fromEntries(questions.map((q) => [q.question, answerTo(q)])));
+
+  return (
+    <View style={local.ask} accessibilityLiveRegion="polite">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Face mood="waiting" size={15} ink={color.tube} />
+        <Txt tone="tube" weight="bold" style={{ flex: 1 }}>{questions.length > 1 ? 'Claude has some questions' : 'Claude has a question'}</Txt>
+      </View>
+      {questions.map((q) => (
+        <View key={q.question} style={{ marginTop: 14, gap: 8 }}>
+          {!!q.header && <Txt tone="tube" small>{q.header.toUpperCase()}</Txt>}
+          <Txt tone="tube" weight="bold">{q.question}</Txt>
+          {q.options.map((o) => {
+            const on = (picked[q.question] ?? []).includes(o.label) && (q.multiSelect || !other[q.question]?.trim());
+            return (
+              <Pressable key={o.label} onPress={() => toggle(q, o.label)} accessibilityRole={q.multiSelect ? 'checkbox' : 'radio'} accessibilityState={{ checked: on }} accessibilityLabel={o.label} style={({ pressed }) => [local.option, on && { backgroundColor: color.tube }, pressed && { opacity: 0.7 }]}>
+                <Txt tone={on ? 'amber' : 'tube'} weight="bold">{(q.multiSelect ? (on ? '[x] ' : '[ ] ') : on ? '(•) ' : '( ) ') + o.label}</Txt>
+                {!!o.description && <Txt tone={on ? 'amber' : 'tube'} small style={{ paddingLeft: 28 }}>{o.description}</Txt>}
+              </Pressable>
+            );
+          })}
+          <TextInput
+            style={[ui.input, { color: color.tube, borderColor: color.tube }]}
+            value={other[q.question] ?? ''}
+            onChangeText={(t) => setOther((o) => ({ ...o, [q.question]: t }))}
+            placeholder="Something else"
+            placeholderTextColor={color.tube}
+            selectionColor={color.tube}
+            keyboardAppearance="dark"
+            accessibilityLabel={`Your own answer to: ${q.question}`}
+          />
+        </View>
+      ))}
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
+        <Pressable onPress={submit} disabled={!done} accessibilityRole="button" accessibilityLabel="Send answers" style={({ pressed }) => [local.askBtn, { backgroundColor: color.tube, flex: 1 }, !done && { opacity: 0.4 }, pressed && { opacity: 0.7 }]}>
+          <Txt tone="amber" weight="bold">Answer</Txt>
+        </Pressable>
+        <Pressable onPress={() => onDecide(false)} accessibilityRole="button" accessibilityLabel={`Skip ${name}`} style={({ pressed }) => [local.askBtn, { borderWidth: 1.5, borderColor: color.tube }, pressed && { opacity: 0.7 }]}>
+          <Txt tone="tube" weight="bold">Skip</Txt>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function ToolRow({ row, onDecide }: { row: Extract<Row, { kind: 'tool' }>; onDecide: (allow: boolean, answers?: Record<string, string>) => void }) {
   const [expanded, setExpanded] = useState(false);
   const what = brief(row.input);
 
   // The moment the whole app exists for: an agent has stopped and is waiting on you.
+  const questions = row.name === 'AskUserQuestion' ? questionsIn(row.input) : [];
+  if (row.decision === 'waiting' && questions.length) return <Questions name={row.name} questions={questions} onDecide={onDecide} />;
   if (row.decision === 'waiting')
     return (
       <View style={local.ask} accessibilityLiveRegion="polite">
@@ -111,9 +184,9 @@ function Chat({ agentId }: { agentId: string }) {
     post({ type: 'prompt', agentId, text: draft });
     setDraft('');
   };
-  const decide = (id: string) => (allow: boolean) => {
+  const decide = (id: string) => (allow: boolean, answers?: Record<string, string>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    post({ type: 'approve', agentId, id, allow });
+    post({ type: 'approve', agentId, id, allow, answers });
   };
 
   return (
@@ -244,6 +317,7 @@ const local = StyleSheet.create({
   tool: { paddingHorizontal: gutter, paddingVertical: 6, minHeight: 34 },
   under: { paddingLeft: 18 },
   ask: { backgroundColor: color.amber, padding: gutter, marginVertical: 8 },
+  option: { paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1.5, borderColor: color.tube, borderRadius: 2, minHeight: tap },
   askBtn: { minHeight: tap + 4, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 2 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: gutter, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.rule, backgroundColor: color.bezel },
 });

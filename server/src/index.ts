@@ -19,6 +19,7 @@ import {
   dataDir,
   deviceKey,
   installEnv,
+  asksUser,
   openApprovals,
   startUpdate,
   removeProject,
@@ -134,6 +135,9 @@ const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
 // One line, and not something git could take for an option.
 const isGitValue = (s: unknown): s is string => typeof s === 'string' && /^[^-\s][^\n\r]{0,99}$/.test(s);
+/** The answers a client sent to Claude's questions: text to text, or nothing. */
+const answersOf = (a: unknown): Record<string, string> | undefined =>
+  a && typeof a === 'object' && Object.values(a).every((v) => typeof v === 'string') ? (a as Record<string, string>) : undefined;
 const newId = () => randomBytes(4).toString('hex');
 
 const send = (client: Client, msg: ServerMessage) => client.send(msg);
@@ -166,7 +170,7 @@ const emit = (agent: AgentRecord, event: AgentEvent) => {
   appendFileSync(logFile(agent.id), JSON.stringify(event) + '\n');
   broadcast({ type: 'event', agentId: agent.id, event });
   if (event.type === 'approval_request') {
-    if (agent.mode === 'auto') running.get(agent.id)?.resolve(event.id, true);
+    if (agent.mode === 'auto' && !asksUser(event.name)) running.get(agent.id)?.resolve(event.id, true);
     else notify('approval', agent);
   }
   if (event.type === 'done' || event.type === 'error') thinking.delete(agent.id);
@@ -366,14 +370,17 @@ async function handle(msg: ClientMessage, ws: Client) {
       thinking.add(agent.id);
       return void (running.get(agent.id) ?? start(agent)).send(msg.text);
     case 'approve':
-      if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true);
+      if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true, answersOf(msg.answers));
       return;
     case 'set_mode':
       if (!agent || !isMode(msg.mode)) return;
       agent.mode = msg.mode;
       commit();
       if (agent.mode === 'auto')
-        for (const id of openApprovals(logs.get(agent.id)!)) running.get(agent.id)?.resolve(id, true);
+        for (const id of openApprovals(logs.get(agent.id)!)) {
+          const asked = logs.get(agent.id)!.find((e) => e.type === 'approval_request' && e.id === id);
+          if (!(asked?.type === 'approval_request' && asksUser(asked.name))) running.get(agent.id)?.resolve(id, true);
+        }
       return;
     case 'check_update':
       await checkForUpdate();

@@ -56,7 +56,7 @@ test('relays approvals to claude and back', async () => {
         events.push(e);
         if (e.type === 'approval_request' && e.id === 't1') {
           assert.deepEqual(openApprovals(events), ['t1']);
-          agent.resolve(e.id, true);
+          agent.resolve(e.id, true, { 'Which?': 'This one' });
           agent.resolve(e.id, false); // a repeat answer must be ignored
         }
         if (e.type === 'approval_request' && e.id === 't2') agent.resolve(e.id, false);
@@ -76,7 +76,7 @@ test('relays approvals to claude and back', async () => {
       { type: 'approval_resolved', id: 't1', allowed: true },
       { type: 'approval_request', id: 't2', name: 'Bash', input: { n: 2 } },
       { type: 'approval_resolved', id: 't2', allowed: false },
-      { type: 'text', text: 'r1:allow r2:deny' },
+      { type: 'text', text: 'r1:allow={"Which?":"This one"} r2:deny' },
       { type: 'done', isError: false },
     ],
   );

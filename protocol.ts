@@ -132,7 +132,9 @@ export type ClientMessage =
   // Stops the agent and removes its history and, if it has one, its worktree. Its branch is kept.
   | { type: 'delete_agent'; agentId: string }
   | { type: 'prompt'; agentId: string; text: string }
-  | { type: 'approve'; agentId: string; id: string; allow: boolean }
+  // `answers` is for Claude's questions to the user (the AskUserQuestion tool): question text -> the label chosen,
+  // several labels joined with ', ' when the question allows more than one.
+  | { type: 'approve'; agentId: string; id: string; allow: boolean; answers?: Record<string, string> }
   | { type: 'set_mode'; agentId: string; mode: Mode }
   // Start and stop receiving a terminal agent's screen. `cols` and `rows` are what fits the viewer.
   | { type: 'term_open'; agentId: string; cols: number; rows: number }

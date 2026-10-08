@@ -124,13 +124,14 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
       child.stdin.end();
     },
     /** Answers an open approval. Ignores ids that are unknown or already answered. */
-    resolve: (id: string, allow: boolean) => {
+    resolve: (id: string, allow: boolean, answers?: Record<string, string>) => {
       const p = pending.get(id);
       if (!p) return;
+      const input = answers && p.input && typeof p.input === 'object' ? { ...p.input, answers } : p.input;
       respond(p.requestId, {
         subtype: 'success',
         response: allow
-          ? { behavior: 'allow', updatedInput: p.input }
+          ? { behavior: 'allow', updatedInput: input }
           : { behavior: 'deny', message: 'The user denied this action.' },
       });
       settle(id, allow);

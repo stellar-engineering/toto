@@ -14,7 +14,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
   }
   if (msg.type === 'control_response') {
-    answers.push(`${msg.response.request_id}:${msg.response.response.behavior}`);
+    const { behavior, updatedInput } = msg.response.response;
+    answers.push(`${msg.response.request_id}:${behavior}${updatedInput?.answers ? '=' + JSON.stringify(updatedInput.answers) : ''}`);
     if (answers.length === 2) {
       out({ type: 'assistant', message: { content: [{ type: 'text', text: answers.sort().join(' ') }] } });
       out({ type: 'result', is_error: false });
