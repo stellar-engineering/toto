@@ -11,7 +11,7 @@ import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.t
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
-import { cancelPluginLogin, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
+import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
 import {
@@ -532,13 +532,19 @@ async function handle(msg: ClientMessage, ws: Client) {
     }
     case 'plugin_login': {
       const { name, login } = installedPlugin(ws, msg.name);
-      if (!login) throw new Error('That plugin has no sign-in.');
-      const shown = await startPluginLogin(login, name, (token, why) => {
+      if (!login?.run) throw new Error(login ? 'That plugin is signed in to with a token. Make one and paste it.' : 'That plugin has no sign-in.');
+      const shown = await startPluginLogin({ run: login.run, url: login.url!, code: login.code!, token: login.token! }, name, (token, why) => {
         if (!token) return send(ws, { type: 'failed', message: why ?? 'The sign-in did not finish.' });
         keepToken(login.env, token);
         void refreshAgents();
       });
       return send(ws, { type: 'plugin_login', name, ...shown });
+    }
+    case 'plugin_token': {
+      const { login } = installedPlugin(ws, msg.name);
+      if (!login?.paste) throw new Error('That plugin is not signed in to with a token.');
+      keepToken(login.env, await checkToken(login, msg.token));
+      return refreshAgents();
     }
     case 'plugin_logout': {
       const { name, login } = installedPlugin(ws, msg.name);

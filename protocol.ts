@@ -87,7 +87,16 @@ export type Phone = { id: string; name: string; added: number; pending: boolean 
  * `latest` when the relay lists a newer one (only a hint: the device checks what it installs).
  * `login` says it needs signing in to, and `signedIn` whether that has been done.
  */
-export type Plugin = { name: string; description: string; version?: string; latest?: string; login?: boolean; signedIn?: boolean };
+export type Plugin = {
+  name: string;
+  description: string;
+  version?: string;
+  latest?: string;
+  login?: boolean;
+  signedIn?: boolean;
+  /** Its sign-in is making a token at `url` and pasting it back, with `plugin_token`, not a code shown here. */
+  paste?: { url: string; help: string };
+};
 
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
 
@@ -167,6 +176,8 @@ export type ClientMessage =
   | { type: 'plugin_install'; name: string }
   | { type: 'plugin_remove'; name: string }
   | { type: 'plugin_login'; name: string }
+  // The other kind of sign-in: a token the person made for themselves. It is tried before it is kept.
+  | { type: 'plugin_token'; name: string; token: string }
   | { type: 'plugin_logout'; name: string }
   | { type: 'check_update' }
   | { type: 'update' }

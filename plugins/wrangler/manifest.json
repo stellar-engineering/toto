@@ -1,0 +1,15 @@
+{
+  "name": "wrangler",
+  "version": "1.0.0",
+  "description": "Cloudflare's command line: deploy Workers and manage D1, R2 and KV.",
+  "npm": ["wrangler@4.149.0"],
+  "login": {
+    "paste": {
+      "url": "https://dash.cloudflare.com/profile/api-tokens",
+      "help": "Create a token from the Edit Cloudflare Workers template, copy it, and paste it here.",
+      "pattern": "^[A-Za-z0-9_-]{35,60}$",
+      "check": ["wrangler", "whoami"]
+    },
+    "env": "CLOUDFLARE_API_TOKEN"
+  }
+}

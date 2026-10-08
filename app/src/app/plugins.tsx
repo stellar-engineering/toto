@@ -1,14 +1,17 @@
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, ScrollView, View } from 'react-native';
 import { useConnection, type Plugin } from '../connection';
 import { gutter } from '../theme';
-import { Btn, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
+import { Btn, Field, Header, Rule, Screen, Txt, Waiting, styles } from '../ui';
 
 /** What can be added to this Toto for its agents to use, and signing in to the ones that need it. */
 export default function PluginsScreen() {
   const { node, plugins, pluginLogin, request, busy, pending, status, owner, loaded } = useConnection();
   const online = status === 'open';
+  // The plugin whose token is being pasted, and what has been pasted so far.
+  const [pasting, setPasting] = useState<string>();
+  const [token, setToken] = useState('');
 
   // The page to sign in at opens by itself the moment its address arrives, once.
   const opened = useRef<string>(undefined);
@@ -30,7 +33,15 @@ export default function PluginsScreen() {
   const signOut = (p: Plugin) =>
     Alert.alert(`Sign out of ${p.name}?`, 'Every project on this Toto loses it until you sign in again.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => request({ type: 'plugin_logout', name: p.name }) },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          setToken('');
+          setPasting(undefined);
+          request({ type: 'plugin_logout', name: p.name });
+        },
+      },
     ]);
 
   return (
@@ -63,6 +74,17 @@ export default function PluginsScreen() {
                       <Btn label="Open the page" onPress={() => Linking.openURL(pluginLogin.url).catch(() => {})} />
                     </View>
                   </>
+                ) : pasting === p.name && p.paste && !p.signedIn ? (
+                  <>
+                    <Txt tone="ghost" small>{p.paste.help}</Txt>
+                    <Btn label="Open the page" onPress={() => Linking.openURL(p.paste!.url).catch(() => {})} />
+                    <Field label="token" value={token} onChangeText={setToken} placeholder="paste the token" secureTextEntry />
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <Btn kind="primary" label={doing('plugin_token', p.name) ? 'Trying it…' : 'Save token'} onPress={() => request({ type: 'plugin_token', name: p.name, token })} busy={doing('plugin_token', p.name)} disabled={busy || !token.trim() || !online} style={{ flex: 1 }} />
+                      <Btn label="Paste" onPress={async () => setToken((await Clipboard.getStringAsync().catch(() => '')).trim())} />
+                    </View>
+                    {doing('plugin_token', p.name) && <Txt tone="ghost" small>Your Toto is checking it with {p.name}. This can take a few seconds.</Txt>}
+                  </>
                 ) : (
                   owner && (
                     <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
@@ -76,7 +98,7 @@ export default function PluginsScreen() {
                         />
                       ) : null}
                       {p.version && p.login && !p.signedIn && (
-                        <Btn kind="primary" label={doing('plugin_login', p.name) ? 'Getting a code…' : 'Sign in'} onPress={() => request({ type: 'plugin_login', name: p.name })} busy={doing('plugin_login', p.name)} disabled={busy || !online} />
+                        <Btn kind="primary" label={doing('plugin_login', p.name) ? 'Getting a code…' : 'Sign in'} onPress={() => (p.paste ? setPasting(p.name) : request({ type: 'plugin_login', name: p.name }))} busy={doing('plugin_login', p.name)} disabled={busy || !online} />
                       )}
                       {p.version && p.signedIn && <Btn label="Sign out" onPress={() => signOut(p)} disabled={busy || !online} />}
                       {p.version && <Btn kind="danger" label="Remove" onPress={() => remove(p)} disabled={busy || !online} />}

@@ -6,7 +6,7 @@
 // A plugin is a tar.gz with a manifest.json at its top, signed with the plugin key (not the release
 // key: plugins ship on their own) whose public half is /opt/toto/plugin.pub. The relay hosts the
 // bundles, but is not believed: a bundle it altered, or made up, fails the signature and is dropped.
-// The manifest lists the packages to install from apt; nothing in a bundle is ever run as root.
+// The manifest lists the packages to install from apt and npm; nothing in a bundle is ever run as root.
 //
 //   toto-plugin.mjs install <name>
 //   toto-plugin.mjs remove <name>
@@ -22,6 +22,8 @@ const BIGGEST = 20 * 1024 * 1024;
 export const isName = (n) => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 const isPackage = (p) => typeof p === 'string' && /^[a-z0-9][a-z0-9.+-]{0,60}$/.test(p);
 
+// An npm package at one exact version, so what is installed is what the signed manifest named.
+const isNpm = (p) => typeof p === 'string' && /^(@[a-z0-9-]+\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+$/.test(p);
 const isArgv = (a) => Array.isArray(a) && a.length >= 1 && a.length <= 20 && a.every((s) => typeof s === 'string' && s.length <= 200);
 const isPattern = (s) => {
   try {
@@ -32,26 +34,32 @@ const isPattern = (s) => {
 };
 
 /**
- * Whether `login` is a sign-in the server may run for the person, as itself and not as root: a
- * command that shows a web address and a code, then a command that prints the token it earned.
- * The token goes to agents in the environment variable `env`, which must end like a secret's name.
+ * Whether `login` is a sign-in the server may run for the person, as itself and not as root. Either
+ * a command that shows a web address and a code, then a command that prints the token it earned; or
+ * (`paste`) a page where the person makes a token themselves and pastes it back, which a command
+ * `check` may then try. The token goes to agents in the environment variable `env`, which must end
+ * like a secret's name.
  */
 export const isLogin = (l) =>
-  isArgv(l?.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code) && /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l.env);
+  /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l?.env) &&
+  (l.paste
+    ? l.run === undefined && /^https:\/\/[\w./-]{1,150}$/.test(l.paste.url) && typeof l.paste.help === 'string' && l.paste.help.length <= 300 && isPattern(l.paste.pattern) && (l.paste.check === undefined || isArgv(l.paste.check))
+    : isArgv(l.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code));
 
 /** Throws unless a manifest is for plugin `name` and asks only for what a plugin may ask for. */
 export function checkManifest(m, name) {
   if (m?.name !== name) throw new Error(`That bundle is not the ${name} plugin. Nothing was installed.`);
   if (!/^\d+\.\d+\.\d+$/.test(m.version)) throw new Error('The plugin has no valid version. Nothing was installed.');
   if (m.apt !== undefined && !(Array.isArray(m.apt) && m.apt.length <= 10 && m.apt.every(isPackage))) throw new Error('The plugin asks for packages that are not valid. Nothing was installed.');
+  if (m.npm !== undefined && !(Array.isArray(m.npm) && m.npm.length <= 5 && m.npm.every(isNpm))) throw new Error('The plugin asks for packages that are not valid. Nothing was installed.');
   if (m.login !== undefined && !isLogin(m.login)) throw new Error('The plugin has a sign-in that is not valid. Nothing was installed.');
 }
 
 /**
  * Installs a bundle into `dir/<name>` if it is signed with `publicKey` and is the plugin asked for,
- * and newer than any already there. `apt` installs the packages its manifest lists. Returns the version.
+ * and newer than any already there. `apt` and `npm` install the packages its manifest lists. Returns the version.
  */
-export function install(name, bundle, signature, { publicKey, dir = DIR, apt }) {
+export function install(name, bundle, signature, { publicKey, dir = DIR, apt, npm }) {
   if (!isName(name)) throw new Error('That is not a plugin name.');
   if (!signedBy(publicKey, bundle, signature)) throw new Error("The plugin is not signed with Toto's plugin key. Nothing was installed.");
   // Only now is anything in it believed, including what it says it is.
@@ -68,6 +76,7 @@ export function install(name, bundle, signature, { publicKey, dir = DIR, apt }) 
     // Newer only: an old bundle is validly signed too, and must not bring back a fixed flaw.
     if (have && !newer(manifest.version, have)) throw new Error(`${name} ${have} is already installed.`);
     if (manifest.apt?.length) apt(manifest.apt);
+    if (manifest.npm?.length) npm(manifest.npm);
     rmSync(`${dir}/${name}`, { recursive: true, force: true });
     renameSync(staged, `${dir}/${name}`);
     return manifest.version;
@@ -78,6 +87,9 @@ export function install(name, bundle, signature, { publicKey, dir = DIR, apt }) 
 
 const aptInstall = (packages) =>
   execFileSync('apt-get', ['install', '-y', '--no-install-recommends', '--', ...packages], { stdio: 'inherit', env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' } });
+
+// Without install scripts: they would run as root, and are not covered by the plugin's signature.
+const npmInstall = (packages) => execFileSync('npm', ['install', '-g', '--ignore-scripts', '--no-audit', '--no-fund', '--', ...packages], { stdio: 'inherit' });
 
 async function download(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(120_000) }).catch(() => undefined);
@@ -93,7 +105,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (!isName(name)) throw new Error('usage: toto-plugin.mjs install|remove <name>');
     if (verb === 'install') {
       const [bundle, signature] = await Promise.all([download(`${PLUGINS}/${name}.tar.gz`), download(`${PLUGINS}/${name}.tar.gz.sig`)]);
-      console.log(install(name, bundle, signature, { publicKey: readFileSync('/opt/toto/plugin.pub'), apt: aptInstall }));
+      console.log(install(name, bundle, signature, { publicKey: readFileSync('/opt/toto/plugin.pub'), apt: aptInstall, npm: npmInstall }));
     } else if (verb === 'remove') {
       // ponytail: the packages it installed stay, as another plugin or the person may use them.
       rmSync(`${DIR}/${name}`, { recursive: true, force: true });

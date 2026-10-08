@@ -25,7 +25,7 @@ const manifest = (extra = {}) => JSON.stringify({ name: 'gh', version: '1.0.0', 
 const target = () => {
   const dir = mkdtempSync(join(tmpdir(), 'toto-plugins-'));
   const installed = [];
-  return { dir, installed, deps: { publicKey, dir, apt: (p) => installed.push(...p) } };
+  return { dir, installed, deps: { publicKey, dir, apt: (p) => installed.push(...p), npm: (p) => installed.push(...p) } };
 };
 
 test('a plugin signed with the plugin key is installed, and its packages asked for', () => {
@@ -74,4 +74,19 @@ test('the gh plugin in the repository is one the installer accepts, and a sign-i
   checkManifest(gh, 'gh');
   for (const env of ['PATH', 'LD_PRELOAD', 'gh_token', 'X', undefined]) assert.ok(!isLogin({ ...gh.login, env }), String(env));
   assert.ok(!isLogin({ ...gh.login, url: '(' }) && !isLogin({ ...gh.login, run: 'gh auth login' }) && !isLogin({ ...gh.login, token: [] }));
+});
+
+test('npm packages must be one exact version, and the wrangler plugin is accepted', () => {
+  const wrangler = JSON.parse(readFileSync(new URL('../../plugins/wrangler/manifest.json', import.meta.url), 'utf8'));
+  checkManifest(wrangler, 'wrangler');
+  for (const npm of [['wrangler'], ['wrangler@latest'], ['wrangler@^4.1.0'], ['-g@1.0.0'], ['a@1.0.0; reboot'], 'wrangler@4.0.0']) assert.throws(() => checkManifest({ ...wrangler, npm }, 'wrangler'), /packages/, String(npm));
+  for (const paste of [{ ...wrangler.login.paste, url: 'http://example.test/' }, { ...wrangler.login.paste, url: 'javascript:alert(1)' }, { ...wrangler.login.paste, pattern: '(' }, { ...wrangler.login.paste, check: 'wrangler whoami' }]) assert.ok(!isLogin({ ...wrangler.login, paste }), JSON.stringify(paste));
+  assert.ok(!isLogin({ ...wrangler.login, run: ['wrangler'] }));
+});
+
+test('a plugin that lists npm packages has them installed', () => {
+  const { installed, deps } = target();
+  const { tgz, sig } = bundle({ 'manifest.json': manifest({ apt: undefined, npm: ['wrangler@4.149.0'] }) });
+  install('gh', tgz, sig, deps);
+  assert.deepEqual(installed, ['wrangler@4.149.0']);
 });

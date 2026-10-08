@@ -16,7 +16,9 @@ const LISTED = 'https://toto.royletron.dev/plugins/index.json';
 
 export const isPluginName = (n: unknown): n is string => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 
-type Login = { run: string[]; url: string; code: string; token: string[]; env: string };
+type Paste = { url: string; help: string; pattern: string; check?: string[] };
+type DeviceLogin = { run: string[]; url: string; code: string; token: string[] };
+type Login = { env: string; paste?: Paste } & Partial<DeviceLogin>;
 type Manifest = { name: string; version: string; description?: string; login?: Login };
 
 /** The plugins installed here. The directory is root's, so what is in it was checked when it was put there. */
@@ -63,6 +65,7 @@ export function describe(have: Manifest[], offered: Manifest[], env: Record<stri
       ...(mine ? { version: mine.version } : null),
       ...(mine && theirs && newer(theirs.version, mine.version) ? { latest: theirs.version } : null),
       ...(login ? { login: true } : null),
+      ...(mine?.login?.paste ? { paste: { url: mine.login.paste.url, help: mine.login.paste.help } } : null),
       ...(mine?.login && env[mine.login.env] ? { signedIn: true } : null),
     };
   });
@@ -93,6 +96,22 @@ export function keepToken(name: string, value: string | undefined) {
   else process.env[name] = value;
 }
 
+/** Whether a token the person pasted is of the right shape and, if the plugin can tell, works. Throws why not. */
+export async function checkToken(login: Login, token: unknown): Promise<string> {
+  const paste = login.paste;
+  const value = typeof token === 'string' ? token.trim() : '';
+  if (!paste || value.length > 500 || !new RegExp(paste.pattern).test(value)) throw new Error('That does not look like the token. Copy all of it from the page, and nothing else.');
+  if (paste.check) {
+    const home = mkdtempSync(join(tmpdir(), 'toto-login-'));
+    const [file, ...args] = paste.check;
+    // The token reaches the command in its environment only, never on its command line.
+    const worked = await exec(file, args, { env: { ...process.env, HOME: home, [login.env]: value }, timeout: 30_000 }).then(() => true, () => false);
+    rmSync(home, { recursive: true, force: true });
+    if (!worked) throw new Error('That token was not accepted. Check it was copied whole, and has the permissions it needs.');
+  }
+  return value;
+}
+
 // --- A plugin's sign-in. The plugin names a command that shows a web address and a code and then
 // waits for the person to enter it there. We give it a terminal (tmux, as the Claude sign-in does),
 // read the address and code off its screen for the phone to show, and when it ends ask the plugin's
@@ -108,7 +127,7 @@ export const cancelPluginLogin = (name: string) => tmux('kill-session', '-t', se
  * Starts the sign-in and resolves to what the phone should show. `done` is called, much later, with
  * the token or with why there is none.
  */
-export async function startPluginLogin(login: Login, name: string, done: (token?: string, why?: string) => void): Promise<{ url: string; code: string }> {
+export async function startPluginLogin(login: DeviceLogin, name: string, done: (token?: string, why?: string) => void): Promise<{ url: string; code: string }> {
   await cancelPluginLogin(name);
   const home = mkdtempSync(join(tmpdir(), 'toto-login-'));
   const finish = (token?: string, why?: string) => {
