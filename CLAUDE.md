@@ -70,6 +70,12 @@ Totos hold a connection to the relay. A deploy does not drop them, but a change 
 - A machine running Toto may run other things. Check agents are idle before restarting `toto.service`, and never kill or delete by user id or user name.
 - The image has no SSH. What it does on first boot can only be seen on its display or through the app.
 
+## The demo and the stores
+
+- `app/src/demo.ts` is a pretend Toto inside the app, opened from the first screen or by `toto://demo` (`/app/demo` on the web). It speaks the real protocol, so a new message type the app depends on needs an answer there too, or the demo breaks. Store reviewers use it; so do the screenshots.
+- `store/listing.md` is the text of both store listings, the notes for reviewers and the privacy answers. `site/privacy.html` is the privacy policy they link to. A change to what the app sends anywhere has to be reflected in both.
+- Store screenshots are taken from a Release build in the simulator with the demo open. The simulator needs the `toto` link scheme pre-approved or every link stops at a prompt: `xcrun simctl spawn <device> defaults write com.apple.launchservices.schemeapproval "com.apple.CoreSimulator.CoreSimulatorBridge-->toto" -string com.stellar.toto`, then restart it.
+
 ## Git
 
 Branch before committing if on main. Commit messages: a short imperative subject, then why.

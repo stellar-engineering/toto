@@ -3,6 +3,7 @@
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import type { ClientMessage, ServerMessage } from '../../protocol';
+import { DEMO, openDemo } from './demo';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure';
 
 export type Route = 'local' | 'relay';
@@ -103,6 +104,20 @@ function attempt(url: string, psk: Uint8Array, phone: string | undefined, via: R
  * there is none. Returns a function that abandons the attempt, or the line if it is up.
  */
 export function reach(to: Settings, handlers: Handlers, done: (result: Link | Unreachable) => void): () => void {
+  // The demo is not anywhere: it is a pretend Toto inside the app, answering as a real one would.
+  if (to.address === DEMO) {
+    const line = openDemo((message) => handlers.onMessage(message, link));
+    const link: Link = { via: 'local', send: line.send, close: line.close };
+    // After this returns, as a real connection would be: the caller is not ready for an answer before then.
+    const start = setTimeout(() => {
+      done(link);
+      link.send(handlers.first);
+    }, 300);
+    return () => {
+      clearTimeout(start);
+      line.close();
+    };
+  }
   const { psk, ...own } = keysFromToken(to.token.trim());
   const { deviceId, relayKey } = to.guest ?? own;
   const phone = to.guest?.phone;

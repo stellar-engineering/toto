@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useConnection, type Identity, type Node, type Phone } from '../connection';
+import { DEMO } from '../demo';
 import { Face } from '../face';
 import { inviteLink } from '../invite';
 import { QR } from '../qr';
@@ -151,7 +152,9 @@ export default function Device() {
           <Section
             title={settings?.name ?? ''}
             about={
-              status === 'open'
+              settings?.address === DEMO
+                ? 'A pretend Toto inside this app, for looking around. Nothing here is real, and it starts over each time. Forget it below when you have a Toto of your own.'
+                : status === 'open'
                 ? via === 'relay'
                   ? 'Reached through the relay, encrypted end to end.'
                   : 'Reached directly on your local network, encrypted end to end.'

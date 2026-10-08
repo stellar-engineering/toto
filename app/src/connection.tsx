@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Phone, Project, ServerMessage } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
+import { DEMO, DEMO_NODE } from './demo';
 import type { Invitation, Invite } from './invite';
 import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
@@ -75,6 +76,8 @@ type Connection = {
   /** The invitation just made for another phone, until `doneSharing` puts it away. */
   invite?: Invite;
   doneSharing: () => void;
+  /** Adds the demo: a pretend Toto inside the app, for looking around without owning one. */
+  addDemo: () => void;
   /** Uses an invitation from another phone to get this one a key of its own. Resolves to what went wrong, or to nothing. */
   join: (invitation: Invitation) => Promise<string | undefined>;
   /** Who agents' commits are attributed to. */
@@ -240,7 +243,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           naming.current = undefined;
         }
         // Now that we are talking to this Toto, tell it how to reach this phone when the app is closed.
-        pushToken().then((token) => token && post({ type: 'register_push', token }));
+        // (Not the demo: it has nothing to tell anyone, and asking to send notifications for it would be odd.)
+        if (to.address !== DEMO) pushToken().then((token) => token && post({ type: 'register_push', token }));
         break;
       case 'invite':
         setPending(undefined);
@@ -360,6 +364,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     return undefined;
   };
 
+  const addDemo = () => {
+    remember((was) => ({ active: DEMO_NODE.id, nodes: [...was.nodes.filter((n) => n.id !== DEMO_NODE.id), DEMO_NODE] }));
+    show(DEMO_NODE);
+  };
+
   const join: Connection['join'] = async (inv) => {
     if (saved.nodes.some((n) => n.id === inv.deviceId)) return `This phone already has ${inv.name}.`;
     const guest = { deviceId: inv.deviceId, relayKey: inv.relayKey, phone: inv.phoneId };
@@ -453,7 +462,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, say }}>
       {children}
     </Context.Provider>
   );

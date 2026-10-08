@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toto privacy policy</title>
+<meta name="description" content="What the Toto app, the relay and this site know about you, which is very little, and where the rest goes.">
+<meta name="theme-color" content="#11140f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="stylesheet" href="/toto.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="name" href="/">toto<span>_</span></a>
+  <nav aria-label="Site">
+    <a href="/">home</a>
+    <a href="/docs">docs</a>
+  </nav>
+</header>
+
+<main class="doc">
+  <section>
+    <h1>Privacy policy</h1>
+    <p class="dim">Last changed 8 October 2026.</p>
+    <p>Toto is a box you own that runs your coding agents, and an app for talking to it. This says what the app, the hosted relay and this site learn about you. The short version: there are no accounts, no advertising and no analytics, and what passes between your phone and your Toto is encrypted so that nobody in between, us included, can read it.</p>
+    <p>Toto is published by Stellar Engineering. Questions about this policy can be raised at <a href="https://github.com/stellar-engineering/toto/issues">github.com/stellar-engineering/toto</a>.</p>
+  </section>
+
+  <section aria-labelledby="app">
+    <h2 id="app">The app</h2>
+    <p>The app keeps, on your phone or in your browser and nowhere else:</p>
+    <ul>
+      <li>The address of each Toto you have added, the name you gave it, and the key that lets this phone talk to it. On a phone these are in the system keychain. In a browser they are in that browser's storage for this site.</li>
+    </ul>
+    <p>The app sends nothing to us. It has no account to sign in to, and contains no advertising or analytics code.</p>
+    <h3>Permissions it asks for</h3>
+    <ul>
+      <li><b>Bluetooth</b>, to find and set up a new Toto near you. It is not used to work out where you are.</li>
+      <li><b>Local network</b>, to reach a Toto on your own network.</li>
+      <li><b>Notifications</b>, to tell you when an agent needs you or has finished.</li>
+      <li><b>Photos</b>, only when you choose pictures to send to an agent. The app sees the ones you pick and no others.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="yours">
+    <h2 id="yours">Your Toto</h2>
+    <p>Your projects, your conversations with agents, the pictures in them, your sign-in to Claude and your SSH key are kept on your Toto, which is your hardware. We have no access to it. Deleting a project or an agent in the app removes it from the Toto. "Forget this Toto" in the app removes its address and key from your phone.</p>
+    <p>Your Toto talks to services on your behalf, under their terms and not ours:</p>
+    <ul>
+      <li><b>Anthropic</b>, with the Claude account or API key you signed it in with, to run your agents. What you ask an agent, and the code it reads, goes to Anthropic as it would if you ran Claude Code yourself.</li>
+      <li><b>Your git host</b>, to clone and push the repositories you add.</li>
+      <li><b>GitHub</b>, once a day, to see whether a new version of Toto has been released. That request carries nothing about you beyond your internet address.</li>
+      <li><b>Whatever your agents reach</b>, such as package registries and websites, in the course of their work.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="relay">
+    <h2 id="relay">The relay</h2>
+    <p>When your phone and your Toto are not on the same network, they meet at a relay. The one at toto.royletron.dev is run by us on Cloudflare; you can run your own instead.</p>
+    <p>Everything passed through it is encrypted between your phone and your Toto with keys the relay never has. The relay can see:</p>
+    <ul>
+      <li>That a Toto is online, by an identifier derived from its key from which the key cannot be recovered.</li>
+      <li>When a phone or browser connects to that Toto, and the internet addresses involved, as any server sees.</li>
+      <li>How much is sent and when, but not what.</li>
+    </ul>
+    <p>We keep a list of which Totos are connected right now, by that identifier, so this site can show how many are online. An entry is removed when the Toto disconnects. We keep no record of who connected to what, and no message content, because we cannot read any. Cloudflare processes these connections as our infrastructure provider and keeps its own operational logs under its policies.</p>
+    <p>When you let a browser in by scanning a code, your phone leaves one sealed message at the relay for that browser to collect. It is readable only by that browser, is deleted when collected, and is deleted after ten minutes if not.</p>
+  </section>
+
+  <section aria-labelledby="push">
+    <h2 id="push">Notifications</h2>
+    <p>To notify your phone, your Toto sends a short message through Expo's push service, which hands it to Apple or Google to deliver. That message contains your Toto's name, a fixed line such as "An agent is waiting for your go-ahead", and two random identifiers so that tapping it opens the right conversation. It never contains your code, your prompts or anything an agent said. Those services also receive your phone's push token, which is how they know where to deliver it.</p>
+  </section>
+
+  <section aria-labelledby="site">
+    <h2 id="site">This site</h2>
+    <p>The site sets no cookies and runs no analytics. It loads its typeface from Google Fonts, so Google sees a request from your browser when you visit. The web app at /app does not; it carries its own copy.</p>
+  </section>
+
+  <section aria-labelledby="children">
+    <h2 id="children">Children</h2>
+    <p>Toto is a tool for software developers. It is not directed at children, and we do not knowingly collect anything from them.</p>
+  </section>
+
+  <section aria-labelledby="changes">
+    <h2 id="changes">Changes</h2>
+    <p>If this policy changes, the date at the top changes with it, and the history of this page is public in the project's repository.</p>
+  </section>
+</main>
+
+<footer>
+  <span>toto<span class="amber">_</span></span>
+  <a href="/">Home</a>
+  <a href="/docs">Documentation</a>
+</footer>
+
+<script src="/toto.js"></script>
+</body>
+</html>

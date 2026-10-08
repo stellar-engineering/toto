@@ -36,6 +36,7 @@ if (Platform.OS === 'web') {
 
 /** First run, or after forgetting the last Toto: tell the app where one is. */
 function Setup() {
+  const { addDemo } = useConnection();
   const [trying, setTrying] = useState(false);
   const [nearby, setNearby] = useState(false);
   // In a browser the way in is a phone that already has a Toto. Typing an address is there for
@@ -50,6 +51,7 @@ function Setup() {
           </Txt>
           <WebPair />
           <Btn label="Enter an address and token instead" onPress={() => setByHand(true)} />
+          <Btn label="Look around a demo Toto" onPress={addDemo} />
         </View>
       </Screen>
     );
@@ -69,6 +71,7 @@ function Setup() {
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
         <NodeForm onTrying={setTrying} onNearby={Platform.OS === 'web' ? undefined : () => setNearby(true)} onCancel={Platform.OS === 'web' ? () => setByHand(false) : undefined} />
         <Txt tone="ghost" small>Someone sharing theirs with you? Point this phone’s camera at the code on their screen.</Txt>
+        <Btn label="No Toto yet? Look around a demo" onPress={addDemo} style={{ marginTop: 20 }} />
       </View>
     </Screen>
   );
@@ -104,6 +107,14 @@ function Root() {
     return hostname === 'join' || path === 'join' ? { found: invitationIn(queryParams ?? {}) } : undefined;
   }, [url]);
   const [dealtWith, setDealtWith] = useState<string>();
+  // The same for a link to the demo, which needs nothing but opening.
+  const { addDemo } = useConnection();
+  const wantsDemo = status === 'setup' && !!url && ['demo'].includes(Linking.parse(url).hostname ?? Linking.parse(url).path ?? '');
+  useEffect(() => {
+    if (wantsDemo) addDemo();
+    // `addDemo` is new each render; this is about the link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsDemo]);
 
   if (status === 'setup' && invitation && dealtWith !== url)
     return (

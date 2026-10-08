@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnection } from './connection';
+import { DEMO } from './demo';
 import { Face, prefersStill, type Mood } from './face';
 import { color, font, gutter, size, tap } from './theme';
 
@@ -146,10 +147,10 @@ export function Header({ parent, title, right, onBack }: { parent?: string; titl
   );
 }
 
-/** Wide enough, in a browser, for the sidebar: everything on the Toto down the left and a screen beside it. */
+/** Wide enough for the sidebar: everything on the Toto down the left and a screen beside it. A browser window, or a tablet on its side. */
 export function useWide() {
   const { width } = useWindowDimensions();
-  return Platform.OS === 'web' && width >= 900;
+  return width >= 900;
 }
 
 /**
@@ -165,14 +166,14 @@ export function StatusLine({ always }: { always?: boolean }) {
 /** `brief` leaves the counts out: in the sidebar, each agent's state is already beside its name. */
 function StatusBar({ brief }: { brief: boolean }) {
   const router = useRouter();
-  const { status, via, tally, trying } = useConnection();
+  const { status, via, tally, trying, node } = useConnection();
   const { bottom } = useSafeAreaInsets();
   const linked = status === 'open';
   const reaching = trying.why === 'refused' ? 'access taken away' : trying.phase === 'local' ? 'looking on this network' : trying.phase === 'relay' ? 'trying the relay' : trying.why === 'offline' ? 'your Toto is offline' : 'no answer, trying again';
   return (
     <Pressable onPress={() => router.push('/device')} accessibilityRole="button" accessibilityLabel="Connection and device settings" style={[styles.status, { paddingBottom: bottom, minHeight: tap + bottom }]}>
       <Face mood={!linked ? 'looking' : tally.waiting ? 'waiting' : tally.working ? 'working' : 'awake'} size={12} />
-      <Txt small tone={linked ? 'phosphor' : 'amber'} style={{ flex: 1 }}>{linked ? (via === 'relay' ? 'relay' : 'local network') : reaching}</Txt>
+      <Txt small tone={linked ? 'phosphor' : 'amber'} style={{ flex: 1 }}>{linked ? (node?.address === DEMO ? 'demo: nothing here is real' : via === 'relay' ? 'relay' : 'local network') : reaching}</Txt>
       {!brief && tally.working > 0 && <Txt small tone="signal">{tally.working} working</Txt>}
       {!brief && tally.waiting > 0 && <Txt small tone="amber" weight="bold">{tally.waiting} waiting on you</Txt>}
     </Pressable>
