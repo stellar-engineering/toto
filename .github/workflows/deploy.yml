@@ -1,11 +1,11 @@
-# Deploys the site and the relay, which are one Cloudflare Worker, whenever either changes on main.
+# Deploys the site, the web app and the relay, which are one Cloudflare Worker, whenever any of them changes on main.
 # Needs the CLOUDFLARE_API_TOKEN secret (a token that may edit Workers and their routes) and the
 # CLOUDFLARE_ACCOUNT_ID variable. Never runs for pull requests, so a fork cannot reach the token.
 name: Deploy site and relay
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'relay/**', '.github/workflows/deploy.yml']
+    paths: ['site/**', 'relay/**', 'app/**', 'protocol.ts', '.github/workflows/deploy.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,6 +27,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # The web app is the phone app built for a browser, served from /app beside the site.
+      - name: Build the web app
+        run: |
+          cd app
+          npm ci
+          npx tsc --noEmit
+          npx expo export -p web
+          rm -rf ../site/app && cp -r dist ../site/app
       # Checked whether or not there is a token, so a change that would not deploy is caught either way.
       - name: Check
         working-directory: relay

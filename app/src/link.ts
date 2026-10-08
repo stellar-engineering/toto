@@ -106,12 +106,21 @@ export function reach(to: Settings, handlers: Handlers, done: (result: Link | Un
   const { psk, ...own } = keysFromToken(to.token.trim());
   const { deviceId, relayKey } = to.guest ?? own;
   const phone = to.guest?.phone;
+  const viaRelay = (): (() => void) => {
+    const relay = to.relay.trim().replace(/\/$/, '');
+    if (!relay) {
+      done('silent');
+      return () => {};
+    }
+    return attempt(`${relay}/v1/${deviceId}?role=client&k=${relayKey}`, psk, phone, 'relay', handlers, done);
+  };
+  // A page served over https may not open an unencrypted connection, which is what a Toto's own
+  // address is. A browser on such a page goes straight to the relay.
+  if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && to.address.trim().startsWith('ws://')) return viaRelay();
   let cancel = attempt(to.address.trim(), psk, phone, 'local', handlers, (local) => {
     // Turned away is an answer from the device itself; the relay would only lead to the same one.
     if (typeof local !== 'string' || local === 'refused') return done(local);
-    const relay = to.relay.trim().replace(/\/$/, '');
-    if (!relay) return done('silent');
-    cancel = attempt(`${relay}/v1/${deviceId}?role=client&k=${relayKey}`, psk, phone, 'relay', handlers, done);
+    cancel = viaRelay();
   });
   return () => cancel();
 }

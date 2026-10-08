@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, Platform, View, type AlertButton } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
 import { Face } from '../face';
 import { invitationIn } from '../invite';
@@ -13,12 +13,45 @@ import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
 import { color, font, gutter, size } from '../theme';
-import { Screen, Txt } from '../ui';
+import { Btn, Screen, Txt } from '../ui';
+import { WebPair } from '../webpair';
+
+// In a browser, the system dialogs the app asks its questions with do nothing at all. The
+// browser's own stand in: a plain notice for one button, OK or Cancel for a choice.
+// ponytail: ugly but honest. Draw them in the app's own style when the web version earns it.
+if (Platform.OS === 'web') {
+  Alert.alert = (title: string, message?: string, buttons?: AlertButton[]) => {
+    const text = message ? `${title}\n\n${message}` : title;
+    const act = buttons?.find((b) => b.style !== 'cancel');
+    const cancel = buttons?.find((b) => b.style === 'cancel');
+    if (!buttons || buttons.length < 2) {
+      window.alert(text);
+      return void act?.onPress?.();
+    }
+    (window.confirm(text) ? act : cancel)?.onPress?.();
+  };
+  document.documentElement.style.backgroundColor = color.tube;
+}
 
 /** First run, or after forgetting the last Toto: tell the app where one is. */
 function Setup() {
   const [trying, setTrying] = useState(false);
   const [nearby, setNearby] = useState(false);
+  // In a browser the way in is a phone that already has a Toto. Typing an address is there for
+  // whoever wants it, though a browser can only use one through its relay.
+  const [byHand, setByHand] = useState(false);
+  if (Platform.OS === 'web' && !byHand)
+    return (
+      <Screen bare>
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: gutter, gap: 20 }}>
+          <Txt weight="bold" style={{ fontSize: size.display, lineHeight: size.display * 1.1, letterSpacing: -2 }} accessibilityRole="header">
+            toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
+          </Txt>
+          <WebPair />
+          <Btn label="Enter an address and token instead" onPress={() => setByHand(true)} />
+        </View>
+      </Screen>
+    );
   if (nearby)
     return (
       <Screen bare>
@@ -33,7 +66,7 @@ function Setup() {
           toto<Txt tone="amber" weight="bold" style={{ fontSize: size.display }}>_</Txt>
         </Txt>
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
-        <NodeForm onTrying={setTrying} onNearby={() => setNearby(true)} />
+        <NodeForm onTrying={setTrying} onNearby={Platform.OS === 'web' ? undefined : () => setNearby(true)} onCancel={Platform.OS === 'web' ? () => setByHand(false) : undefined} />
         <Txt tone="ghost" small>Someone sharing theirs with you? Point this phone’s camera at the code on their screen.</Txt>
       </View>
     </Screen>

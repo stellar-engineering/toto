@@ -27,7 +27,9 @@
       "googleServicesFile": "./google-services.json"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
     },
     "plugins": [
       "expo-router",
@@ -74,6 +76,9 @@
         "projectId": "af5cfc62-0414-41b1-8387-237d23899ede"
       }
     },
-    "owner": "stellar-engineering"
+    "owner": "stellar-engineering",
+    "experiments": {
+      "baseUrl": "/app"
+    }
   }
 }

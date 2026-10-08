@@ -4,3 +4,4 @@ node_modules/
 
 # Firebase service account private keys. These belong in Expo credentials, never in the repo.
 *-firebase-adminsdk-*.json
+site/app/

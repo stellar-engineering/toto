@@ -176,7 +176,8 @@ export function Screen({ children, bare }: { children: ReactNode; bare?: boolean
     // anything above it (a header, the status bar) would leave it that much short.
     // On Android too: the app draws edge to edge there, so the system no longer resizes it for the keyboard.
     <KeyboardAvoidingView style={styles.screen} behavior="padding">
-      <SafeAreaView style={{ flex: 1 }} edges={bare && !typing ? ['top', 'bottom'] : ['top']}>
+      {/* ponytail: in a browser, the phone's one column, centred. A layout that uses a wide screen is its own piece of work. */}
+      <SafeAreaView style={[{ flex: 1 }, Platform.OS === 'web' && styles.column]} edges={bare && !typing ? ['top', 'bottom'] : ['top']}>
         {children}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -229,7 +230,7 @@ export function Reaching({ what }: { what: string }) {
             : trying.why === 'lost'
               ? [`Lost the line to ${name}. Reconnecting…`, undefined]
               : trying.why === 'refused'
-                ? [`This phone no longer has access to ${name}.`, 'Whoever shared it has taken that back. They can share it again; until then you can forget it in connection settings.']
+                ? [`This ${Platform.OS === 'web' ? 'browser' : 'phone'} no longer has access to ${name}.`, 'Whoever shared it has taken that back. They can share it again; until then you can forget it in connection settings.']
               : [`${name} did not answer.`, node?.relay ? 'Tried this network and the relay. Trying again every few seconds.' : 'No relay is set, so it can only be reached on its own network. Trying again every few seconds.'];
   return (
     <View style={styles.empty}>
@@ -257,6 +258,7 @@ export function Reaching({ what }: { what: string }) {
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.tube },
   pad: { paddingHorizontal: gutter },
+  column: { width: '100%', maxWidth: 620, alignSelf: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: color.rule },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: tap, paddingHorizontal: gutter, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.rule },
   back: { minHeight: tap, justifyContent: 'center', maxWidth: '45%' },
   status: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: tap, paddingHorizontal: gutter, backgroundColor: color.bezel },

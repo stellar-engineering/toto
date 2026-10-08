@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { Alert, Keyboard, Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useConnection, type Identity, type Node, type Phone } from '../connection';
 import { Face } from '../face';
@@ -62,7 +62,7 @@ function Phones({ phones }: { phones: Phone[] }) {
       { text: 'Remove', style: 'destructive', onPress: () => request({ type: 'revoke', phoneId: phone.id }) },
     ]);
 
-  if (!owner) return <Txt tone="ghost" small>This Toto was shared with this phone. The phone that set it up can take that back at any time.</Txt>;
+  if (!owner) return <Txt tone="ghost" small>This Toto was shared with this {Platform.OS === 'web' ? 'browser' : 'phone'}. The phone that set it up can take that back at any time.</Txt>;
 
   // The code is on screen: nothing else in this section matters until it is scanned or put away.
   if (invite && invited?.pending && invite.expires > now)
@@ -94,6 +94,7 @@ function Phones({ phones }: { phones: Phone[] }) {
           <Btn kind="danger" label="Remove" busy={pending?.type === 'revoke' && pending.phoneId === phone.id} onPress={() => remove(phone)} disabled={busy || !online} style={{ minHeight: 36, paddingHorizontal: 12 }} />
         </View>
       ))}
+      <Txt tone="ghost" small style={{ marginTop: 8 }}>For a browser, open toto.royletron.dev/app on the computer and point this phone’s camera at the code it shows.</Txt>
       <Field label="whose" value={name} onChangeText={setName} placeholder="like Sam’s iPhone" autoCapitalize="words" editable={online} />
       <Btn
         kind={phones.length ? 'plain' : 'primary'}
@@ -155,7 +156,7 @@ export default function Device() {
                   ? 'Reached through the relay, encrypted end to end.'
                   : 'Reached directly on your local network, encrypted end to end.'
                 : trying.why === 'refused'
-                  ? 'This phone’s access to it was taken away. Whoever shared it can share it again.'
+                  ? `This ${Platform.OS === 'web' ? 'browser' : 'phone'}’s access to it was taken away. Whoever shared it can share it again.`
                   : trying.phase === 'local'
                   ? 'Looking for it on this network…'
                   : trying.phase === 'relay'

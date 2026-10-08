@@ -42,6 +42,32 @@ export class Stats extends DurableObject<Env> {
   }
 }
 
+const HANDOFF_FOR = 10 * 60_000;
+const HANDOFF_BYTES = 4096;
+
+/**
+ * Somewhere to leave one sealed message for a browser to collect: how a phone hands a browser
+ * its invitation. One object per handoff, named by an id the browser made up and showed the
+ * phone. It is written once, read once, and gone in ten minutes either way. What is left here is
+ * sealed to a key only the browser holds, so the relay passes it on without being able to read it.
+ */
+export class Handoff extends DurableObject<Env> {
+  async leave(sealed: string): Promise<boolean> {
+    if (await this.ctx.storage.get('sealed')) return false;
+    await this.ctx.storage.put('sealed', sealed);
+    await this.ctx.storage.setAlarm(Date.now() + HANDOFF_FOR);
+    return true;
+  }
+  async collect(): Promise<string | undefined> {
+    const sealed = await this.ctx.storage.get<string>('sealed');
+    if (sealed) await this.ctx.storage.deleteAll();
+    return sealed;
+  }
+  async alarm() {
+    await this.ctx.storage.deleteAll();
+  }
+}
+
 const sha256 = async (text: string) =>
   [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -148,6 +174,22 @@ export default {
       // Briefly cacheable: the site asks every few seconds, from every visitor.
       return Response.json({ live }, { headers: { 'cache-control': 'public, max-age=10' } });
     }
+    const handoff = /^\/pair\/([0-9a-f]{32})$/.exec(pathname);
+    if (handoff) {
+      const box = env.HANDOFF.getByName(handoff[1]);
+      if (request.method === 'PUT') {
+        const sealed = await request.text();
+        if (!sealed || sealed.length > HANDOFF_BYTES) return new Response('too large', { status: 413 });
+        return new Response(null, { status: (await box.leave(sealed)) ? 204 : 409 });
+      }
+      // ponytail: the browser asks every couple of seconds. A WebSocket here would spare the
+      // requests if many browsers ever wait at once.
+      const sealed = await box.collect();
+      return sealed ? new Response(sealed, { headers: { 'cache-control': 'no-store' } }) : new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    }
+    // The web app is one page that draws every screen itself, so any address under /app that is
+    // not a file is that page.
+    if (pathname === '/app' || pathname.startsWith('/app/')) return env.ASSETS.fetch(new Request(new URL('/app/', request.url), request));
     if (pathname === '/release') {
       // The latest release, for the site: GitHub does not let a page ask it directly. Whether the
       // image and the Android app are there too is checked, since they are added to a release some minutes after the rest.

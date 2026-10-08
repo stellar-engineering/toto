@@ -60,6 +60,26 @@ export function setupKey(mySecret: Uint8Array, theirPublic: string, known?: Uint
   return derive(x25519.getSharedSecret(mySecret, hexToBytes(theirPublic)), known, 'toto ble setup', 32);
 }
 
+/**
+ * Seals `text` so that only whoever holds the secret half of `theirPublic` can read it, with no
+ * conversation first: for leaving one message where they will collect it. Each call makes a key
+ * pair of its own and throws the secret away, so the key is used exactly once.
+ *
+ * It says nothing about who sealed it. Whoever opens it must have had `theirPublic` reach the
+ * sealer by a way they trust, such as a code read off their own screen.
+ */
+export function sealTo(theirPublic: string, text: string, random: (n: number) => Uint8Array): { k: string; b: string } {
+  const secret = random(32);
+  const key = derive(x25519.getSharedSecret(secret, hexToBytes(theirPublic)), undefined, 'toto handoff', 32);
+  return { k: publicKey(secret), b: bytesToHex(chacha20poly1305(key, new Uint8Array(12)).encrypt(utf8ToBytes(text))) };
+}
+
+/** Opens what `sealTo` made for the public half of `mySecret`. Throws if it was not, or was altered. */
+export function openSealed(mySecret: Uint8Array, sealed: { k: string; b: string }): string {
+  const key = derive(x25519.getSharedSecret(mySecret, hexToBytes(sealed.k)), undefined, 'toto handoff', 32);
+  return bytesToUtf8(chacha20poly1305(key, new Uint8Array(12)).decrypt(hexToBytes(sealed.b)));
+}
+
 function channel(key: Uint8Array) {
   let count = 0;
   return () => {

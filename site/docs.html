@@ -71,6 +71,9 @@ sudo ./install.sh</pre>
     <p>Once a Toto has an owner it stops announcing itself. To add another phone, or to move it to a new network, open pairing mode <a href="#device">at the device</a>. A Toto that loses its network for a minute also starts announcing again, but then only a phone that already holds its key can talk to it.</p>
     <h3>By address and token</h3>
     <p>A machine with no Bluetooth is added by hand: its address, such as <code>ws://192.168.1.20:7860</code>, and the token the installer printed.</p>
+    <h3>In a browser</h3>
+    <p>Toto also runs in a browser, at <a href="/app">toto.royletron.dev/app</a>. The page shows a code. Point the camera of a phone that set a Toto up at it, confirm on the phone, and the browser is let in with a key of its own. It is listed with your other phones, and removed the same way.</p>
+    <p>A browser reaches a Toto through the relay only, never directly, because a secure page may not open a plain connection to a device on your network. Its key is kept in that browser's storage for the site, so use it on a computer you trust. Setting up a new Toto still needs the phone app.</p>
     <h3>More than one</h3>
     <p>The app keeps a list of your Totos and shows which are online. Each has a name, which lives on the device, so renaming it on one phone renames it on all of them.</p>
   </section>

@@ -79,3 +79,18 @@ test('Bluetooth setup: two ends agree on a key nobody listening can work out', a
   const b = session(owned, 'device', cn, dn);
   assert.equal(b.open(a.seal('wifi password')), 'wifi password');
 });
+
+test('a sealed handoff opens only for the key it was sealed to, and only whole', async () => {
+  const { randomBytes } = await import('node:crypto');
+  const { openSealed, publicKey, sealTo } = await import('./secure.ts');
+  const random = (n: number) => new Uint8Array(randomBytes(n));
+  const mine = random(32);
+  const sealed = sealTo(publicKey(mine), 'an invitation', random);
+  assert.equal(openSealed(mine, sealed), 'an invitation');
+  assert.ok(!JSON.stringify(sealed).includes('invitation'));
+  // Sealed twice, it looks different each time: nothing is reused.
+  assert.notDeepEqual(sealTo(publicKey(mine), 'an invitation', random), sealed);
+  assert.throws(() => openSealed(random(32), sealed));
+  assert.throws(() => openSealed(mine, { ...sealed, b: sealed.b.replace(/.$/, (c) => (c === '0' ? '1' : '0')) }));
+  assert.throws(() => openSealed(mine, { ...sealed, k: publicKey(random(32)) }));
+});

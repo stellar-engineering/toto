@@ -1,9 +1,9 @@
 import * as Haptics from 'expo-haptics';
-import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Phone, Project, ServerMessage } from '../../protocol';
 import type { Invitation, Invite } from './invite';
+import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
@@ -116,14 +116,14 @@ type Saved = { active?: string; nodes: Node[] };
 // to reach it later means "try again", not "start over".
 // ponytail: one keychain entry for the lot, which on some iOS versions tops out near 2KB, or
 // roughly eight Totos. Split it into an entry each if anyone gets there.
-const store = (saved: Saved) => SecureStore.setItem(STORE_KEY, JSON.stringify(saved));
+const store = (saved: Saved) => write(STORE_KEY, JSON.stringify(saved));
 
 const load = (): Saved => {
   try {
-    const raw = SecureStore.getItem(STORE_KEY);
+    const raw = read(STORE_KEY);
     if (raw) return JSON.parse(raw);
     // Carry over the single Toto an earlier version saved.
-    const old = SecureStore.getItem(OLD_STORE_KEY);
+    const old = read(OLD_STORE_KEY);
     if (!old) return { nodes: [] };
     const { v, ...settings } = JSON.parse(old) as Settings & { v?: number };
     // The earliest versions could save no relay without anyone having chosen that.
