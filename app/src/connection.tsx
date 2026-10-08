@@ -1,13 +1,15 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Phone, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, ImageRef, Phone, Project, ServerMessage } from '../../protocol';
+import { bytesToHex } from '@noble/ciphers/utils.js';
+import { getRandomValues } from 'expo-crypto';
 import type { Invitation, Invite } from './invite';
 import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -19,6 +21,8 @@ export type TermScreen = { screen: string; cursor: { row: number; col: number } 
 export type Activity = 'idle' | 'working' | 'waiting' | 'failed';
 
 const RETRY_AFTER = 3_000;
+// A picture is sent to an agent in pieces of this many base64 characters.
+const PIECE = 64_000;
 const STORE_KEY = 'toto.nodes';
 const OLD_STORE_KEY = 'toto.settings'; // from when the app knew a single Toto
 /** The hosted relay, used unless someone chooses otherwise. */
@@ -85,6 +89,12 @@ type Connection = {
   tally: { working: number; waiting: number };
   /** The screen of each terminal agent this device has open, by agent id. */
   screens: Record<string, TermScreen>;
+  /** Pictures fetched from the Toto so far, as base64, by picture id. */
+  pictures: Record<string, string>;
+  /** Fetches a picture from an agent's conversation, unless it is here or already on its way. */
+  wantPicture: (agentId: string, image: ImageRef) => void;
+  /** Says something to an agent, with any pictures to go with it. */
+  say: (agentId: string, text: string, pictures?: { mime: string; base64: string }[]) => void;
 };
 
 export type Trying = { phase: Route | 'waiting'; why?: Unreachable | 'lost'; tries: number };
@@ -162,6 +172,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
+  const [pictures, setPictures] = useState<Connection['pictures']>({});
+  // Pictures on their way: the pieces that have arrived so far, by picture id.
+  const arriving = useRef<Record<string, string[]>>({});
   const [via, setVia] = useState<Route>('local');
 
   const link = useRef<Link | null>(null);
@@ -237,6 +250,20 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setPending(undefined);
         setClaudeLogin(msg.url);
         break;
+      case 'image': {
+        const pieces = arriving.current[msg.id];
+        if (!pieces) break;
+        pieces[msg.at] = msg.data;
+        if (pieces.filter(Boolean).length < msg.of) break;
+        delete arriving.current[msg.id];
+        // ponytail: the most recent few dozen are kept in memory and the rest fetched again if
+        // scrolled back to. Keep them on disk if that proves slow.
+        setPictures((all) => {
+          const kept = Object.entries(all).slice(-39);
+          return { ...Object.fromEntries(kept), [msg.id]: pieces.join('') };
+        });
+        break;
+      }
       case 'term':
         setScreens((all) => ({ ...all, [msg.agentId]: { screen: msg.screen, cursor: msg.cursor } }));
         break;
@@ -277,6 +304,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         // The device is about to replay every history. What is on screen stays until it has.
         caughtUp.current = false;
         replay.current = {};
+        arriving.current = {}; // whatever was on its way went with the old line
         setScreens({});
         setVia(result.via);
         setStatus('open');
@@ -303,6 +331,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setAgents([]);
     setEvents({});
     setScreens({});
+    setPictures({});
+    arriving.current = {};
     setSshKey(undefined);
     setIdentity(undefined);
     setClaude(undefined);
@@ -393,6 +423,23 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const wantPicture: Connection['wantPicture'] = (agentId, image) => {
+    if (!link.current || pictures[image.id] !== undefined || arriving.current[image.id]) return;
+    arriving.current[image.id] = [];
+    post({ type: 'image', agentId, id: image.id });
+  };
+
+  const say: Connection['say'] = (agentId, text, sending = []) => {
+    const images = sending.map((picture) => {
+      const id = bytesToHex(getRandomValues(new Uint8Array(8)));
+      // In pieces small enough for the relay, which will not pass a large message.
+      const of = Math.ceil(picture.base64.length / PIECE);
+      for (let at = 0; at < of; at++) post({ type: 'upload', id, at, of, data: picture.base64.slice(at * PIECE, (at + 1) * PIECE) });
+      return { id, mime: picture.mime };
+    });
+    post({ type: 'prompt', agentId, text, ...(images.length ? { images } : null) });
+  };
+
   const request = (message: ClientMessage) => {
     if (!link.current) return;
     setPending(message);
@@ -406,7 +453,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, software, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, say }}>
       {children}
     </Context.Provider>
   );

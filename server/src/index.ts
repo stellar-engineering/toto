@@ -6,6 +6,7 @@ import { hostname, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Mode, Project, ServerMessage } from '../../protocol.ts';
+import { MAX_IMAGE, dropImages, readImage, saveImage } from './images.ts';
 import { cancelLogin, credentialsWork, finishLogin, startLogin } from './login.ts';
 import { type Screen, killTerminal, openTerminal, watchTerminal } from './terminal.ts';
 import { startBluetooth } from './ble.ts';
@@ -43,8 +44,11 @@ const relayUrl = process.env.TOTO_RELAY_URL;
 // invitation, good until that time and for nothing but collecting a fresh key.
 type PhoneRecord = { id: string; name: string; key: string; added: number; invite?: number; push?: string[] };
 /** `phone` is who is at the other end when it is not the owner; `close` hangs up on them. */
-type Client = { send: (msg: ServerMessage) => void; close: () => void; phone?: PhoneRecord };
+type Client = { send: (msg: ServerMessage) => void; close: () => void; phone?: PhoneRecord; /** Pictures being sent to an agent, piece by piece, until a prompt uses them. */ uploads?: Map<string, string[]> };
 const INVITE_FOR = 10 * 60_000;
+// A picture is sent in pieces of this many bytes. Sealed and written out as hex, one comes to
+// well under the relay's limit on a single message.
+const IMAGE_PIECE = 48 * 1024;
 const MAX_PHONES = 20;
 const clients = new Set<Client>();
 
@@ -208,6 +212,7 @@ const start = (agent: AgentRecord) => {
     user: project.user,
     sessionId: agent.sessionId,
     onEvent: (e) => emit(agent, e),
+    keepImage: (mime, data) => saveImage(agent.id, mime, data),
     onSession: (id) => {
       agent.sessionId = id;
       if (logs.has(agent.id)) commit();
@@ -242,6 +247,7 @@ const forget = (agent: AgentRecord) => {
   running.get(agent.id)?.stop();
   logs.delete(agent.id);
   rmSync(logFile(agent.id), { force: true });
+  dropImages(agent.id);
 };
 
 /** Changes how agents are signed in to Claude, or signs them out, and lets everything know. */
@@ -404,11 +410,46 @@ async function handle(msg: ClientMessage, ws: Client) {
       if (!term?.viewers.has(ws)) return;
       return term.type(typeof msg.text === 'string' ? msg.text.slice(0, 10_000) : undefined, msg.key);
     }
-    case 'prompt':
-      if (agent?.harness !== 'claude' || typeof msg.text !== 'string' || !msg.text.trim()) return;
-      emit(agent, { type: 'user', text: msg.text });
+    case 'image': {
+      const bytes = readImage(msg.agentId, msg.id);
+      if (!bytes) throw new Error('That picture is no longer on this Toto.');
+      // In pieces small enough for the relay, which will not pass a large message.
+      const of = Math.ceil(bytes.length / IMAGE_PIECE);
+      for (let at = 0; at < of; at++)
+        send(ws, { type: 'image', agentId: msg.agentId, id: msg.id, at, of, data: bytes.subarray(at * IMAGE_PIECE, (at + 1) * IMAGE_PIECE).toString('base64') });
+      return;
+    }
+    case 'upload': {
+      if (typeof msg.id !== 'string' || !/^[0-9a-f]{16}$/.test(msg.id) || typeof msg.data !== 'string') return;
+      if (!Number.isInteger(msg.at) || !Number.isInteger(msg.of) || msg.at < 0 || msg.at >= msg.of || msg.of > 400) return;
+      const uploads = (ws.uploads ??= new Map());
+      const pieces = uploads.get(msg.id) ?? [];
+      pieces[msg.at] = msg.data;
+      uploads.set(msg.id, pieces);
+      // One client may not hold more than a few pictures' worth in memory at once.
+      let held = 0;
+      for (const p of uploads.values()) for (const piece of p) held += piece?.length ?? 0;
+      if (held > 4 * MAX_IMAGE) {
+        ws.uploads = undefined;
+        throw new Error('Those pictures are too large to send.');
+      }
+      return;
+    }
+    case 'prompt': {
+      if (agent?.harness !== 'claude' || typeof msg.text !== 'string') return;
+      const sent = Array.isArray(msg.images) ? msg.images.slice(0, 6) : [];
+      const pictures = sent.flatMap((p) => {
+        const data = ws.uploads?.get(p?.id)?.join('');
+        ws.uploads?.delete(p?.id);
+        const ref = data ? saveImage(agent.id, p.mime, data) : undefined;
+        return ref && data ? [{ ref, mime: ref.mime, data }] : [];
+      });
+      if (sent.length && pictures.length < sent.length) throw new Error('A picture did not arrive whole, or is not one this Toto can take. Nothing was sent; try again.');
+      if (!msg.text.trim() && !pictures.length) return;
+      emit(agent, { type: 'user', text: msg.text, ...(pictures.length ? { images: pictures.map((p) => p.ref) } : null) });
       thinking.add(agent.id);
-      return void (running.get(agent.id) ?? start(agent)).send(msg.text);
+      return void (running.get(agent.id) ?? start(agent)).send(msg.text, pictures);
+    }
     case 'approve':
       if (agent && typeof msg.id === 'string') running.get(agent.id)?.resolve(msg.id, msg.allow === true, answersOf(msg.answers));
       return;

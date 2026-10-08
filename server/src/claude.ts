@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import type { AgentEvent } from '../../protocol.ts';
+import type { AgentEvent, ImageRef } from '../../protocol.ts';
 import { command } from './projects.ts';
 
 // The browser for agents: a plugin shipped with the server (so every project has it, and an update
@@ -14,15 +14,24 @@ const CHROMIUM = '/usr/bin/chromium';
 export const browserArgs = (plugin = BROWSER_PLUGIN, chromium = CHROMIUM): string[] =>
   existsSync(plugin) && existsSync(chromium) ? ['--plugin-dir', plugin] : [];
 
-const blockText = (content: unknown): string =>
+/** Puts a picture away and gives back the reference to it; undefined if it is not one worth keeping. */
+type Keep = (mime: unknown, base64: unknown) => ImageRef | undefined;
+
+const isPicture = (b: any) => b?.type === 'image' && b.source?.type === 'base64';
+
+/** The text of a tool's result. Pictures that were kept are left out of it; they are shown as pictures. */
+const blockText = (content: unknown, kept: boolean): string =>
   typeof content === 'string'
     ? content
     : Array.isArray(content)
-      ? content.map((b) => (b?.type === 'text' ? b.text : `[${b?.type}]`)).join('\n')
+      ? content.filter((b) => !(kept && isPicture(b))).map((b) => (b?.type === 'text' ? b.text : `[${b?.type}]`)).join('\n')
       : '';
 
-/** Maps one parsed message from `claude --output-format stream-json` onto common events. */
-export function toEvents(msg: any): AgentEvent[] {
+/**
+ * Maps one parsed message from `claude --output-format stream-json` onto common events. With
+ * `keep`, pictures in a tool's result (a screenshot, an image file it read) are kept and referred to.
+ */
+export function toEvents(msg: any, keep?: Keep): AgentEvent[] {
   if (msg?.type === 'result') return [{ type: 'done', isError: !!msg.is_error }];
   if (msg?.type !== 'assistant' && msg?.type !== 'user') return [];
   const content = msg.message?.content;
@@ -30,8 +39,10 @@ export function toEvents(msg: any): AgentEvent[] {
   return content.flatMap((b: any): AgentEvent[] => {
     if (b.type === 'text') return [{ type: 'text', text: b.text }];
     if (b.type === 'tool_use') return [{ type: 'tool_call', id: b.id, name: b.name, input: b.input }];
-    if (b.type === 'tool_result')
-      return [{ type: 'tool_result', id: b.tool_use_id, output: blockText(b.content), isError: !!b.is_error }];
+    if (b.type === 'tool_result') {
+      const images = keep && Array.isArray(b.content) ? b.content.filter(isPicture).flatMap((p: any) => keep(p.source.media_type, p.source.data) ?? []) : [];
+      return [{ type: 'tool_result', id: b.tool_use_id, output: blockText(b.content, !!keep), isError: !!b.is_error, ...(images.length ? { images } : null) }];
+    }
     return [];
   });
 }
@@ -43,6 +54,8 @@ type Options = {
   /** Conversation to pick up again. */
   sessionId?: string;
   onEvent: (e: AgentEvent) => void;
+  /** Where pictures the agent produces are put. */
+  keepImage?: Keep;
   /** The conversation's id, or undefined when the one asked for could not be resumed. */
   onSession: (id: string | undefined) => void;
   /** Fires once when the process is gone. */
@@ -50,7 +63,7 @@ type Options = {
 };
 
 /** Starts a long-lived Claude Code process. */
-export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }: Options) {
+export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onSession, onExit }: Options) {
   const [file, args, opts] = command(user, cwd, process.env.TOTO_CLAUDE_BIN ?? 'claude', [
     '-p',
     '--input-format', 'stream-json',
@@ -96,7 +109,7 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
       for (const [id, p] of pending) if (p.requestId === msg.request_id) settle(id, false);
       return;
     }
-    toEvents(msg).forEach(onEvent);
+    toEvents(msg, keepImage).forEach(onEvent);
   });
 
   let exited = false;
@@ -115,7 +128,17 @@ export function startClaude({ cwd, user, sessionId, onEvent, onSession, onExit }
   child.stdin.on('error', () => {}); // a write racing the exit; 'close' reports it
 
   return {
-    send: (text: string) => write({ type: 'user', message: { role: 'user', content: text } }),
+    /** What the person said, with any pictures they sent along. */
+    send: (text: string, pictures: { mime: string; data: string }[] = []) =>
+      write({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: pictures.length
+            ? [...pictures.map((p) => ({ type: 'image', source: { type: 'base64', media_type: p.mime, data: p.data } })), ...(text ? [{ type: 'text', text }] : [])]
+            : text,
+        },
+      }),
     // Interrupts any turn in flight and closes stdin, which makes claude exit. Under sudo the
     // child is not ours to signal.
     stop: () => {
