@@ -16,7 +16,7 @@ const LISTED = 'https://toto.royletron.dev/plugins/index.json';
 
 export const isPluginName = (n: unknown): n is string => typeof n === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(n);
 
-type Login = { run: string[]; url: string; code: string; enter?: boolean; token: string[]; env: string };
+type Login = { run: string[]; url: string; code: string; token: string[]; env: string };
 type Manifest = { name: string; version: string; description?: string; login?: Login };
 
 /** The plugins installed here. The directory is root's, so what is in it was checked when it was put there. */
@@ -125,8 +125,7 @@ export async function startPluginLogin(login: Login, name: string, done: (token?
     for (const until = Date.now() + 30_000; Date.now() < until && !ended && !(url.test(seen) && code.test(seen)); await wait(400))
       seen = await tmux('capture-pane', '-p', '-J', '-t', session(name)).then((r) => r.stdout, () => ((ended = true), seen));
     const found = { url: url.exec(seen)?.[0], code: code.exec(seen)?.[0] };
-    if (!found.url || !found.code) throw new Error('The sign-in did not offer a code. Check this Toto is online and try again.');
-    if (login.enter) await tmux('send-keys', '-t', session(name), 'Enter');
+    if (!found.url || !found.code) throw new Error(`The sign-in did not show a code to enter. Try again; if it keeps happening, ${name} may have changed how it signs in.`);
     // Waits for the person: until the sign-in ends of its own accord, or they give up.
     void (async () => {
       for (const until = Date.now() + 15 * 60_000; Date.now() < until; await wait(2000)) {

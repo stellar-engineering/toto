@@ -33,5 +33,5 @@ test('a plugin sign-in shows its address and code, then hands back the token it 
 });
 
 test('a sign-in that never shows a code gives up with a reason', async () => {
-  await assert.rejects(startPluginLogin({ ...login, run: ['sh', '-c', 'echo nothing useful'] }, 'test2', () => {}), /did not offer a code/);
+  await assert.rejects(startPluginLogin({ ...login, run: ['sh', '-c', 'echo nothing useful'] }, 'test2', () => {}), /did not show a code/);
 });

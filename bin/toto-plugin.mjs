@@ -37,7 +37,7 @@ const isPattern = (s) => {
  * The token goes to agents in the environment variable `env`, which must end like a secret's name.
  */
 export const isLogin = (l) =>
-  isArgv(l?.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code) && /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l.env) && (l.enter === undefined || typeof l.enter === 'boolean');
+  isArgv(l?.run) && isArgv(l.token) && isPattern(l.url) && isPattern(l.code) && /^[A-Z][A-Z0-9_]{0,40}_(TOKEN|KEY)$/.test(l.env);
 
 /** Throws unless a manifest is for plugin `name` and asks only for what a plugin may ask for. */
 export function checkManifest(m, name) {

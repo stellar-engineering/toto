@@ -1,12 +1,14 @@
 {
   "name": "gh",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitHub's command line, for agents: pull requests, issues and checks.",
   "apt": [
     "gh"
   ],
   "login": {
     "run": [
+      "env",
+      "GH_PROMPT_DISABLED=1",
       "gh",
       "auth",
       "login",
@@ -19,7 +21,6 @@
     ],
     "url": "https://github\\.com/login/device",
     "code": "[A-Z0-9]{4}-[A-Z0-9]{4}",
-    "enter": true,
     "token": [
       "gh",
       "auth",
