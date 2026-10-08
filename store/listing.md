@@ -4,6 +4,17 @@ What goes in the App Store and Google Play listings for Toto, kept here so both 
 and changes are reviewed like code. Screenshots are in `store/screenshots/`, taken from the
 app's demo (`toto://demo`).
 
+## Google Play's extra pieces
+
+In `store/play/`:
+
+- `icon-512.png`: the app icon at the size Play asks for.
+- `feature.png`: the 1024 by 500 graphic at the top of the listing, rendered from `feature.html`
+  with headless Chrome at exactly that window size.
+- `screenshots/`: the phone screenshots, cropped to the app itself (no status bar) and to the
+  2:1 shape Play allows at most. They were made from the iPhone captures, the app being the
+  same on both; replace them with captures from an Android phone when convenient.
+
 ## Name
 
 Toto: agents at home
