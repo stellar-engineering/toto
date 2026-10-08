@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Alert, Keyboard, ScrollView, Share, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Keyboard, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useConnection, type Identity, type Node } from '../connection';
+import { useConnection, type Identity, type Node, type Phone } from '../connection';
 import { Face } from '../face';
+import { inviteLink } from '../invite';
+import { QR } from '../qr';
 import { gutter } from '../theme';
 import { Btn, Field, Header, Rule, Screen, Txt, Waiting } from '../ui';
 
@@ -39,6 +41,72 @@ function Where({ settings }: { settings: Node }) {
   );
 }
 
+/** Who else has this Toto, and letting another phone in. Only the phone that set it up sees the controls. */
+function Phones({ phones }: { phones: Phone[] }) {
+  const { owner, invite, doneSharing, request, pending, busy, status } = useConnection();
+  const { width } = useWindowDimensions();
+  const [name, setName] = useState('');
+  const online = status === 'open';
+  const invited = invite && phones.find((p) => p.id === invite.phoneId);
+  const [now, setNow] = useState(() => Date.now());
+  // An invitation runs out; notice when this one has.
+  useEffect(() => {
+    if (!invite) return;
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, [invite]);
+
+  const remove = (phone: Phone) =>
+    Alert.alert(`Remove ${phone.name}?`, phone.pending ? 'Its invitation will stop working.' : 'It loses access straight away, and stops getting notifications. You can share with it again later.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => request({ type: 'revoke', phoneId: phone.id }) },
+    ]);
+
+  if (!owner) return <Txt tone="ghost" small>This Toto was shared with this phone. The phone that set it up can take that back at any time.</Txt>;
+
+  // The code is on screen: nothing else in this section matters until it is scanned or put away.
+  if (invite && invited?.pending && invite.expires > now)
+    return (
+      <View style={{ gap: 14 }}>
+        <Txt weight="bold">Scan this with {invited.name}’s camera.</Txt>
+        <QR value={inviteLink(invite)} size={Math.min(width - 2 * gutter, 340)} label={`Invitation code for ${invited.name}`} />
+        <Txt tone="ghost" small>It needs the Toto app installed. The code works once, for ten minutes, and whoever scans it gets the same access to this Toto as you. Show it only to them.</Txt>
+        <Waiting hint={`Open the camera on ${invited.name} and point it at the code.`} after={0}>Waiting for it to be scanned…</Waiting>
+        <Btn label="Cancel the invitation" onPress={() => { request({ type: 'revoke', phoneId: invite.phoneId }); doneSharing(); }} />
+      </View>
+    );
+
+  return (
+    <View style={{ gap: 4 }}>
+      {invite && invited && !invited.pending && (
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+          <Face mood="awake" size={13} />
+          <Txt tone="signal" style={{ flex: 1 }} accessibilityLiveRegion="polite">{invited.name} has joined.</Txt>
+        </View>
+      )}
+      {invite && (!invited || invited.pending) && <Txt tone="amber" style={{ marginBottom: 8 }}>That invitation ran out without being used.</Txt>}
+      {phones.map((phone) => (
+        <View key={phone.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 }}>
+          <View style={{ flex: 1 }}>
+            <Txt weight="bold" numberOfLines={1}>{phone.name}</Txt>
+            <Txt tone="ghost" small>{phone.pending ? 'invited, has not joined yet' : `joined ${new Date(phone.added).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}</Txt>
+          </View>
+          <Btn kind="danger" label="Remove" busy={pending?.type === 'revoke' && pending.phoneId === phone.id} onPress={() => remove(phone)} disabled={busy || !online} style={{ minHeight: 36, paddingHorizontal: 12 }} />
+        </View>
+      ))}
+      <Field label="whose" value={name} onChangeText={setName} placeholder="like Sam’s iPhone" autoCapitalize="words" editable={online} />
+      <Btn
+        kind={phones.length ? 'plain' : 'primary'}
+        label={pending?.type === 'share' ? 'Making an invitation…' : 'Share with another phone'}
+        busy={pending?.type === 'share'}
+        onPress={() => { Keyboard.dismiss(); doneSharing(); request({ type: 'share', name }); setName(''); }}
+        disabled={busy || !online || !name.trim()}
+        style={{ marginTop: 12 }}
+      />
+    </View>
+  );
+}
+
 const Section = ({ title, about, children }: { title: string; about: string; children: React.ReactNode }) => (
   <View style={{ paddingHorizontal: gutter, paddingVertical: 20 }}>
     <Txt weight="bold" accessibilityRole="header">{title}</Txt>
@@ -48,7 +116,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, software, request, busy, pending, loaded, trying, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -86,7 +154,9 @@ export default function Device() {
                 ? via === 'relay'
                   ? 'Reached through the relay, encrypted end to end.'
                   : 'Reached directly on your local network, encrypted end to end.'
-                : trying.phase === 'local'
+                : trying.why === 'refused'
+                  ? 'This phone’s access to it was taken away. Whoever shared it can share it again.'
+                  : trying.phase === 'local'
                   ? 'Looking for it on this network…'
                   : trying.phase === 'relay'
                     ? 'Not on this network. Trying the relay…'
@@ -135,6 +205,22 @@ export default function Device() {
             </Section>
           )}
           <Rule />
+          {phones && (
+            <>
+              <Section
+                title="Phones"
+                about={
+                  !owner
+                    ? 'Shared with you.'
+                    : phones.length
+                      ? 'This phone set this Toto up. These others can use it too, each with a key of its own that you can take away.'
+                      : 'Only this phone can use this Toto. Share it to let another in, with a key of its own that you can take away.'
+                }>
+                <Phones phones={phones} />
+              </Section>
+              <Rule />
+            </>
+          )}
           {identity && (
             <Section title="Commit author" about="Agents make their git commits under this name and email.">
               {/* Keyed on the saved value so the fields follow it, including when another device changes it. */}

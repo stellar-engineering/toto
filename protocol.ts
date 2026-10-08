@@ -68,6 +68,9 @@ export type TermKey =
   | `ctrl-${string}`;
 
 /** How this device's agents are signed in to Claude, if they are. */
+/** A phone a device was shared with. `pending` until it has used its invitation. */
+export type Phone = { id: string; name: string; added: number; pending: boolean };
+
 export type ClaudeAccount = 'none' | 'subscription' | 'api_key';
 
 /** Who agents' git commits are attributed to. */
@@ -90,7 +93,15 @@ export type ServerMessage =
       latest?: string;
       /** An update is being installed. The device restarts when it is done. */
       updating: boolean;
+      /** The phones this device has been shared with, and whether the phone being told is the one that owns it. */
+      phones: Phone[];
+      owner: boolean;
     }
+  // The answer to `share`: an invitation for one other phone, to hand over out of band (a QR code).
+  // It works once, until `expires`, and only to collect that phone's own key.
+  | { type: 'invite'; phoneId: string; secret: string; deviceId: string; relayKey: string; address: string; relay: string; name: string; expires: number }
+  // The answer to `join`: the secret this phone uses from now on. The invitation is spent.
+  | { type: 'joined'; secret: string }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
   // The answer to `ping`: this device is here, and this is what it is called.
@@ -119,6 +130,11 @@ export type ClientMessage =
   | { type: 'claude_key'; key: string }
   | { type: 'claude_logout' }
   // Look for a newer release now; and install the one that was found.
+  // Owner only: invite another phone, called `name` in the list; and take a phone's access away.
+  | { type: 'share'; name: string }
+  | { type: 'revoke'; phoneId: string }
+  // The only thing an invitation may say: swap it for a key of this phone's own.
+  | { type: 'join' }
   | { type: 'check_update' }
   | { type: 'update' }
   // This phone's push token, so the device can tell it when an agent needs attention.

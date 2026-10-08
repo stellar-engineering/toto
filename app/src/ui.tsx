@@ -149,7 +149,7 @@ export function StatusLine() {
   const { status, via, tally, trying } = useConnection();
   const { bottom } = useSafeAreaInsets();
   const linked = status === 'open';
-  const reaching = trying.phase === 'local' ? 'looking on this network' : trying.phase === 'relay' ? 'trying the relay' : trying.why === 'offline' ? 'your Toto is offline' : 'no answer, trying again';
+  const reaching = trying.why === 'refused' ? 'access taken away' : trying.phase === 'local' ? 'looking on this network' : trying.phase === 'relay' ? 'trying the relay' : trying.why === 'offline' ? 'your Toto is offline' : 'no answer, trying again';
   return (
     <Pressable onPress={() => router.push('/device')} accessibilityRole="button" accessibilityLabel="Connection and device settings" style={[styles.status, { paddingBottom: bottom, minHeight: tap + bottom }]}>
       <Face mood={!linked ? 'looking' : tally.waiting ? 'waiting' : tally.working ? 'working' : 'awake'} size={12} />
@@ -214,7 +214,7 @@ export function Reaching({ what }: { what: string }) {
   const router = useRouter();
   const { status, node, trying } = useConnection();
   const name = node?.name ?? 'your Toto';
-  const stuck = status !== 'open' && trying.tries >= 2;
+  const stuck = status !== 'open' && (trying.tries >= 2 || trying.why === 'refused');
   // Once it has failed a couple of times, say why and keep saying it: narrating each retry would
   // have the line change every few seconds for as long as the Toto stays away.
   const [line, hint] =
@@ -228,12 +228,22 @@ export function Reaching({ what }: { what: string }) {
             ? [`${name} is not connected to the relay.`, 'It may be switched off, or have lost its internet. Trying again every few seconds.']
             : trying.why === 'lost'
               ? [`Lost the line to ${name}. Reconnecting…`, undefined]
+              : trying.why === 'refused'
+                ? [`This phone no longer has access to ${name}.`, 'Whoever shared it has taken that back. They can share it again; until then you can forget it in connection settings.']
               : [`${name} did not answer.`, node?.relay ? 'Tried this network and the relay. Trying again every few seconds.' : 'No relay is set, so it can only be reached on its own network. Trying again every few seconds.'];
   return (
     <View style={styles.empty}>
       <Face mood={stuck ? 'offline' : 'looking'} size={34} nose />
-      {/* Keyed on the line, so the seconds count each stage and not the whole wait. */}
-      <Waiting key={line} hint={hint} after={stuck ? 0 : 6} style={{ maxWidth: 320 }}>{line}</Waiting>
+      {trying.why === 'refused' && status !== 'open' ? (
+        // Nothing is being waited for: this does not change until someone shares it again.
+        <View style={{ maxWidth: 320, gap: 6 }}>
+          <Txt>{line}</Txt>
+          <Txt tone="ghost" small>{hint}</Txt>
+        </View>
+      ) : (
+        // Keyed on the line, so the seconds count each stage and not the whole wait.
+        <Waiting key={line} hint={hint} after={stuck ? 0 : 6} style={{ maxWidth: 320 }}>{line}</Waiting>
+      )}
       {stuck && (
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Btn label="Connection settings" onPress={() => router.push('/device')} />

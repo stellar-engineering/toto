@@ -63,7 +63,8 @@ export function Nearby({ onAdded, onCancel }: { onAdded?: () => void; onCancel: 
       // A Toto that already has an owner will only talk to a phone that holds its token.
       const setup = await openSetup(toto.id, (id) => {
         const ours = nodes.find((n) => n.id === id);
-        return ours && keysFromToken(ours.token).psk;
+        // Only the phone that owns it holds the device's own key; one it was shared with does not.
+        return ours && !ours.guest ? keysFromToken(ours.token).psk : undefined;
       });
       open.current = setup;
       go({ at: 'met', setup, wifi: setup.info.wifi });

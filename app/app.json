@@ -8,7 +8,13 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stellar.toto"
+      "bundleIdentifier": "com.stellar.toto",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Toto connects to your Toto device on your home network."
+      }
     },
     "android": {
       "adaptiveIcon": {

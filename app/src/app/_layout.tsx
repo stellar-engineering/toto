@@ -1,11 +1,14 @@
 import { IBMPlexMono_400Regular, IBMPlexMono_400Regular_Italic, IBMPlexMono_500Medium, IBMPlexMono_700Bold } from '@expo-google-fonts/ibm-plex-mono';
 import { useFonts } from 'expo-font';
+import * as Linking from 'expo-linking';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConnectionProvider, useConnection } from '../connection';
 import { Face } from '../face';
+import { invitationIn } from '../invite';
+import { Joining } from '../join';
 import { Nearby } from '../nearby';
 import { NodeForm } from '../nodeform';
 import { useTapped } from '../push';
@@ -31,6 +34,7 @@ function Setup() {
         </Txt>
         <Txt tone="ghost" style={{ marginTop: 8, marginBottom: 24 }}>Your agents keep working at home. Point this phone at the box they run on.</Txt>
         <NodeForm onTrying={setTrying} onNearby={() => setNearby(true)} />
+        <Txt tone="ghost" small>Someone sharing theirs with you? Point this phone’s camera at the code on their screen.</Txt>
       </View>
     </Screen>
   );
@@ -56,6 +60,22 @@ function Root() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, tapped?.agentId, router]);
 
+  // An invitation scanned before this phone knows any Toto: there are no screens yet for the
+  // link to open, so it is picked up here. (Once there are, it opens the join screen itself.)
+  const url = Linking.useLinkingURL();
+  const invitation = useMemo(() => {
+    if (!url) return undefined;
+    const { hostname, path, queryParams } = Linking.parse(url);
+    return hostname === 'join' || path === 'join' ? { found: invitationIn(queryParams ?? {}) } : undefined;
+  }, [url]);
+  const [dealtWith, setDealtWith] = useState<string>();
+
+  if (status === 'setup' && invitation && dealtWith !== url)
+    return (
+      <Screen bare>
+        <Joining invitation={invitation.found} onDone={() => setDealtWith(url ?? undefined)} />
+      </Screen>
+    );
   if (status === 'setup') return <Setup />;
   // Open or reconnecting: keep every screen where it was, so a dropped connection costs nothing but a moment.
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.tube } }} />;

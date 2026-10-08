@@ -38,7 +38,14 @@ const { psk, deviceId, relayKey } = keysFromToken(token);
 const relayUrl = process.env.TOTO_RELAY_URL;
 
 /** A connected client that has proved it holds the key. */
-type Client = { send: (msg: ServerMessage) => void };
+// A phone this device was shared with. Its `key` is its own secret, never the device's token, so
+// it can be taken away without disturbing anyone else. While `invite` is set it is an unused
+// invitation, good until that time and for nothing but collecting a fresh key.
+type PhoneRecord = { id: string; name: string; key: string; added: number; invite?: number; push?: string[] };
+/** `phone` is who is at the other end when it is not the owner; `close` hangs up on them. */
+type Client = { send: (msg: ServerMessage) => void; close: () => void; phone?: PhoneRecord };
+const INVITE_FOR = 10 * 60_000;
+const MAX_PHONES = 20;
 const clients = new Set<Client>();
 
 type ProjectRecord = Project & { user?: string; dir: string };
@@ -48,7 +55,7 @@ type AgentRecord = Agent & { cwd: string; sessionId?: string };
 const logDir = join(dataDir, 'logs');
 mkdirSync(logDir, { recursive: true });
 const stateFile = join(dataDir, 'state.json');
-const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[] } = {
+const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents: AgentRecord[]; identity: Identity; pushTokens: string[]; phones: PhoneRecord[] } = {
   // Whether anyone has connected yet. Until someone has, a phone nearby may set this device up
   // over Bluetooth and be handed its keys; afterwards only a phone that already holds them may.
   // A device with saved state from before this was recorded has been in use, so it has one.
@@ -58,6 +65,7 @@ const state: { name: string; claimed: boolean; projects: ProjectRecord[]; agents
   projects: [],
   agents: [],
   pushTokens: [],
+  phones: [],
   // A placeholder so commits never fail for want of an author; the app asks for the real one.
   identity: { name: 'Toto', email: `toto@${hostname()}` },
   ...(existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {}),
@@ -129,7 +137,17 @@ const snapshot = (): ServerMessage => ({
   version,
   latest: latest === version ? undefined : latest,
   updating,
+  phones: livePhones().map(({ id, name, added, invite }) => ({ id, name, added, pending: !!invite })),
+  // Each client is told the truth about itself as its copy is sent (see accept).
+  owner: true,
 });
+
+/** The phones this device is shared with, less any invitation that ran out unused. */
+function livePhones() {
+  const live = state.phones.filter((p) => !p.invite || p.invite > Date.now());
+  if (live.length !== state.phones.length) state.phones = live;
+  return live;
+}
 
 const isMode = (m: unknown): m is Mode => m === 'ask' || m === 'auto';
 const isName = (s: unknown): s is string => typeof s === 'string' && !!s.trim() && s.length <= 60;
@@ -245,6 +263,25 @@ async function signIn(credential: Credential | undefined) {
 async function handle(msg: ClientMessage, ws: Client) {
   const agent = 'agentId' in msg ? state.agents.find((a) => a.id === msg.agentId) : undefined;
   switch (msg?.type) {
+    case 'share': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can share it.');
+      if (!isName(msg.name)) throw new Error('Say whose phone it is, in 60 characters or fewer.');
+      if (livePhones().length >= MAX_PHONES) throw new Error('This Toto is shared with as many phones as it allows. Remove one first.');
+      const phone: PhoneRecord = { id: newId(), name: msg.name.trim(), key: randomBytes(16).toString('hex'), added: Date.now(), invite: Date.now() + INVITE_FOR };
+      state.phones.push(phone);
+      commit();
+      return send(ws, { type: 'invite', phoneId: phone.id, secret: phone.key, deviceId, relayKey, address: lanAddress(), relay: relayUrl ?? '', name: state.name, expires: phone.invite! });
+    }
+    case 'revoke': {
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can remove a phone.');
+      const gone = state.phones.find((p) => p.id === msg.phoneId);
+      if (!gone) return;
+      state.phones = state.phones.filter((p) => p !== gone);
+      // It stops being told about agents, and anything it has open is closed now, not at its next message.
+      state.pushTokens = state.pushTokens.filter((t) => !gone.push?.includes(t));
+      for (const client of [...clients]) if (client.phone === gone) client.close();
+      return commit();
+    }
     case 'sync':
       if (!state.claimed) {
         state.claimed = true;
@@ -280,7 +317,10 @@ async function handle(msg: ClientMessage, ws: Client) {
       await cancelLogin();
       return signIn(undefined);
     case 'register_push':
-      if (!isPushToken(msg.token) || state.pushTokens.includes(msg.token)) return;
+      if (!isPushToken(msg.token)) return;
+      // Remembered against the phone too, so removing the phone stops its notifications.
+      if (ws.phone && !ws.phone.push?.includes(msg.token)) ws.phone.push = [...(ws.phone.push ?? []), msg.token].slice(-3);
+      if (state.pushTokens.includes(msg.token)) return save();
       // The newest few: a phone gets a fresh token now and then, and old ones would otherwise pile up.
       state.pushTokens = [...state.pushTokens, msg.token].slice(-10);
       return save();
@@ -412,6 +452,9 @@ async function handle(msg: ClientMessage, ws: Client) {
 function accept(wire: { send: (frame: string) => void; close: () => void }) {
   let secure: ReturnType<typeof session> | undefined;
   let client: Client | undefined;
+  // Who is calling, when it is not the owner, and whether all they hold is an unused invitation.
+  let phone: PhoneRecord | undefined;
+  let invited = false;
   const closed = () => {
     if (!client) return;
     clients.delete(client);
@@ -422,18 +465,49 @@ function accept(wire: { send: (frame: string) => void; close: () => void }) {
     try {
       const frame: Frame = JSON.parse(raw);
       if (frame.t === 'hello' && !secure) {
+        if (frame.p !== undefined) {
+          phone = livePhones().find((p) => p.id === frame.p);
+          // Told plainly, so a phone whose access was taken away can say so instead of "offline".
+          // It gives nothing away: the caller already knows the id, and without the key learns no more.
+          if (!phone) {
+            wire.send(JSON.stringify({ t: 'refused' } satisfies Frame));
+            return wire.close();
+          }
+          invited = !!phone.invite;
+        }
         const nonce = randomBytes(NONCE_BYTES).toString('hex');
-        secure = session(psk, 'device', frame.n, nonce);
+        secure = session(phone ? keysFromToken(phone.key).psk : psk, 'device', frame.n, nonce);
         return wire.send(JSON.stringify({ t: 'hello', n: nonce } satisfies Frame));
       }
       if (frame.t !== 'data' || !secure) throw new Error('unexpected frame');
       const msg: ClientMessage = JSON.parse(secure.open(frame.b));
       if (!msg || typeof msg !== 'object') throw new Error('not a message');
+      // A phone removed since it connected has no business here, whatever it holds.
+      if (phone && !state.phones.includes(phone)) throw new Error('removed');
       if (!client) {
         // Opening a frame is the proof that this client holds the key. Until now it was sent nothing.
         const { seal } = secure;
-        client = { send: (m) => wire.send(JSON.stringify({ t: 'data', b: seal(JSON.stringify(m)) } satisfies Frame)) };
-        clients.add(client);
+        client = {
+          phone,
+          send: (m) => wire.send(JSON.stringify({ t: 'data', b: seal(JSON.stringify(m.type === 'state' ? { ...m, owner: !phone } : m)) } satisfies Frame)),
+          close: () => {
+            closed();
+            wire.close();
+          },
+        };
+        // Someone holding only an invitation is told nothing that is broadcast.
+        if (!invited) clients.add(client);
+      }
+      if (invited) {
+        // An invitation does one thing, once: it is swapped for a key nobody else has seen. So a
+        // photograph of the QR code is worthless afterwards, and two phones cannot both use it.
+        if (msg.type !== 'join' || !phone?.invite || phone.invite < Date.now()) throw new Error('spent');
+        phone.key = randomBytes(16).toString('hex');
+        phone.added = Date.now();
+        delete phone.invite;
+        commit();
+        client.send({ type: 'joined', secret: phone.key });
+        return client.close();
       }
       const to = client;
       handle(msg, to).catch((err) => send(to, { type: 'failed', message: err.message }));

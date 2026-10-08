@@ -2,12 +2,14 @@ import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Identity, Phone, Project, ServerMessage } from '../../protocol';
+import type { Invitation, Invite } from './invite';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
+export type { Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, Harness, Identity, Mode, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
+export type { Invitation, Invite } from './invite';
 
 /** A Toto this phone knows: where it is, the secret shared with it, and what it is called. */
 export type Node = Settings & { id: string; name: string };
@@ -62,6 +64,15 @@ type Connection = {
   software?: { version: string; latest?: string; updating: boolean };
   /** The page to open for a Claude sign-in that is under way. */
   claudeLogin?: string;
+  /** The phones this Toto is shared with. Undefined on a Toto too old to be shared. */
+  phones?: Phone[];
+  /** This phone is the one that set the Toto up, and so the one that may share it and take that back. */
+  owner: boolean;
+  /** The invitation just made for another phone, until `doneSharing` puts it away. */
+  invite?: Invite;
+  doneSharing: () => void;
+  /** Uses an invitation from another phone to get this one a key of its own. Resolves to what went wrong, or to nothing. */
+  join: (invitation: Invitation) => Promise<string | undefined>;
   /** Who agents' commits are attributed to. */
   identity?: Identity;
   /** The device's public SSH key, when it has one. */
@@ -145,6 +156,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [identity, setIdentity] = useState<Identity>();
   const [claude, setClaude] = useState<ClaudeAccount>();
   const [claudeLogin, setClaudeLogin] = useState<string>();
+  const [phones, setPhones] = useState<Phone[]>();
+  const [owner, setOwner] = useState(true);
+  const [invite, setInvite] = useState<Invite>();
   const [software, setSoftware] = useState<{ version: string; latest?: string; updating: boolean }>();
   const [events, setEvents] = useState<Connection['events']>({});
   const [screens, setScreens] = useState<Connection['screens']>({});
@@ -187,6 +201,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           if (was !== msg.claude) setClaudeLogin(undefined);
           return msg.claude;
         });
+        setPhones(msg.phones);
+        setOwner(msg.owner ?? true);
         setPending(undefined);
         setLoaded(true);
         if (naming.current?.id !== to.id) learnName(to.id, msg.name);
@@ -213,6 +229,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         // Now that we are talking to this Toto, tell it how to reach this phone when the app is closed.
         pushToken().then((token) => token && post({ type: 'register_push', token }));
         break;
+      case 'invite':
+        setPending(undefined);
+        setInvite(msg);
+        break;
       case 'claude_login':
         setPending(undefined);
         setClaudeLogin(msg.url);
@@ -238,7 +258,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setPending(undefined);
       setTrying({ phase: 'waiting', why, tries: ++tries.current });
       setStatus('reconnecting');
-      retry.current = setTimeout(() => wanted && dial(to), RETRY_AFTER);
+      // Turned away is final until someone shares it again: asking every few seconds changes nothing.
+      if (why !== 'refused') retry.current = setTimeout(() => wanted && dial(to), RETRY_AFTER);
     };
     const cancel = reach(
       to,
@@ -287,6 +308,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setClaude(undefined);
     setClaudeLogin(undefined);
     setSoftware(undefined);
+    setPhones(undefined);
+    setOwner(true);
+    setInvite(undefined);
     if (!to) return setStatus('setup');
     setStatus('reconnecting');
     dial(to);
@@ -296,12 +320,43 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     const to = { address: settings.address.trim(), token: settings.token.trim(), relay: settings.relay.trim() };
     const found = await ping(to);
     if (found === 'offline') return 'That Toto is not connected to the relay. Is it switched on?';
-    if (found === 'silent') return 'Nothing answered with that token, on this network or through the relay.';
+    if (typeof found === 'string') return 'Nothing answered with that token, on this network or through the relay.';
     const id = deviceIdOf(to.token);
     const chosen = name?.trim();
     if (chosen && chosen !== found.name) naming.current = { id, name: chosen };
     const added: Node = { ...to, id, name: chosen || found.name };
     remember((was) => ({ active: id, nodes: [...was.nodes.filter((n) => n.id !== id), added] }));
+    show(added);
+    return undefined;
+  };
+
+  const join: Connection['join'] = async (inv) => {
+    if (saved.nodes.some((n) => n.id === inv.deviceId)) return `This phone already has ${inv.name}.`;
+    const guest = { deviceId: inv.deviceId, relayKey: inv.relayKey, phone: inv.phoneId };
+    const where = { address: inv.address.trim(), relay: inv.relay.trim(), guest };
+    // The invitation opens one conversation, in which the device hands over a key made for this phone.
+    const secret = await new Promise<string | Unreachable>((resolve) => {
+      setTimeout(() => resolve('silent'), 25_000);
+      reach(
+        { ...where, token: inv.secret },
+        {
+          first: { type: 'join' },
+          onMessage: (message, line) => {
+            if (message.type !== 'joined') return;
+            resolve(message.secret);
+            line.close();
+          },
+          // Hung up on without a key: the invitation had already been used.
+          onLost: () => resolve('refused'),
+        },
+        (result) => typeof result === 'string' && resolve(result),
+      );
+    });
+    if (secret === 'refused') return 'That invitation has been used or has run out. Ask for a new one.';
+    if (secret === 'offline') return `${inv.name} is not connected to the relay, and is not on this network. Is it switched on?`;
+    if (secret === 'silent') return `${inv.name} did not answer. Join the same Wi-Fi as it, or check it is switched on, and scan again.`;
+    const added: Node = { ...where, token: secret, id: inv.deviceId, name: inv.name };
+    remember((was) => ({ active: added.id, nodes: [...was.nodes.filter((n) => n.id !== added.id), added] }));
     show(added);
     return undefined;
   };
@@ -351,7 +406,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, software, identity, sshKey, events, activity, tally, screens }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, software, identity, sshKey, events, activity, tally, screens }}>
       {children}
     </Context.Provider>
   );

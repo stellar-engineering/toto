@@ -110,7 +110,7 @@ export async function startBluetooth({ info, psk, handle }: Options): Promise<Bl
         talk.secure = session(key, 'device', frame.n, nonce);
         return send(talk, { t: 'hello', n: nonce, k: publicKey(secret) });
       }
-      if (!talk.secure) throw new Error('data before hello');
+      if (!talk.secure || frame.t !== 'data') throw new Error('data before hello');
       const request: SetupRequest = JSON.parse(talk.secure.open(frame.b));
       const reply = await handle(request).catch((err): SetupReply => ({ type: 'refused', problem: String(err.message ?? err) }));
       send(talk, { t: 'data', b: talk.secure.seal(JSON.stringify(reply)) });

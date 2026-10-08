@@ -6,11 +6,18 @@ import type { ClientMessage, ServerMessage } from '../../protocol';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure';
 
 export type Route = 'local' | 'relay';
-/** Where a Toto is and the secret shared with it. `relay` may be empty, meaning local network only. */
-export type Settings = { address: string; token: string; relay: string };
+/**
+ * Where a Toto is and the secret shared with it. `relay` may be empty, meaning local network only.
+ *
+ * For the phone that set the Toto up, `token` is the device's own. For a phone it was shared
+ * with, `token` is that phone's own secret and `guest` holds what it would otherwise have worked
+ * out from the device's: where to find it at the relay, and which phone to say it is.
+ */
+export type Settings = { address: string; token: string; relay: string; guest?: { deviceId: string; relayKey: string; phone: string } };
 export type Link = { via: Route; send: (message: ClientMessage) => void; close: () => void };
 /** Why no line could be had: the relay says the device is not connected to it, or nothing answered at all. */
-export type Unreachable = 'offline' | 'silent';
+/** `refused`: the device answered, and this phone's key (or invitation) is no longer one it accepts. */
+export type Unreachable = 'offline' | 'silent' | 'refused';
 
 // How long to wait to hear from the device. The local network answers in a blink or not at all,
 // so it gets little; the relay is given longer, for slow mobile connections.
@@ -31,7 +38,7 @@ type Handlers = {
   onTry?: (via: Route) => void;
 };
 
-function attempt(url: string, psk: Uint8Array, via: Route, handlers: Handlers, done: (result: Link | Unreachable) => void) {
+function attempt(url: string, psk: Uint8Array, phone: string | undefined, via: Route, handlers: Handlers, done: (result: Link | Unreachable) => void) {
   handlers.onTry?.(via);
   const ws = new WebSocket(url);
   const nonce = bytesToHex(getRandomValues(new Uint8Array(NONCE_BYTES)));
@@ -58,11 +65,12 @@ function attempt(url: string, psk: Uint8Array, via: Route, handlers: Handlers, d
   // a connection attempt open for over a minute before reporting it closed.
   const giveUp = setTimeout(() => fail('silent'), via === 'local' ? LOCAL_TIMEOUT : RELAY_TIMEOUT);
 
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', n: nonce } satisfies Frame));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', n: nonce, p: phone } satisfies Frame));
   ws.onmessage = (m) => {
     if (state === 'over') return ws.close();
     try {
       const frame: Frame = JSON.parse(m.data);
+      if (frame.t === 'refused') return fail('refused');
       if (frame.t === 'hello' && !secure) {
         secure = session(psk, 'client', nonce, frame.n);
         return link.send(handlers.first);
@@ -95,12 +103,15 @@ function attempt(url: string, psk: Uint8Array, via: Route, handlers: Handlers, d
  * there is none. Returns a function that abandons the attempt, or the line if it is up.
  */
 export function reach(to: Settings, handlers: Handlers, done: (result: Link | Unreachable) => void): () => void {
-  const { psk, deviceId, relayKey } = keysFromToken(to.token.trim());
-  let cancel = attempt(to.address.trim(), psk, 'local', handlers, (local) => {
-    if (typeof local !== 'string') return done(local);
+  const { psk, ...own } = keysFromToken(to.token.trim());
+  const { deviceId, relayKey } = to.guest ?? own;
+  const phone = to.guest?.phone;
+  let cancel = attempt(to.address.trim(), psk, phone, 'local', handlers, (local) => {
+    // Turned away is an answer from the device itself; the relay would only lead to the same one.
+    if (typeof local !== 'string' || local === 'refused') return done(local);
     const relay = to.relay.trim().replace(/\/$/, '');
     if (!relay) return done('silent');
-    cancel = attempt(`${relay}/v1/${deviceId}?role=client&k=${relayKey}`, psk, 'relay', handlers, done);
+    cancel = attempt(`${relay}/v1/${deviceId}?role=client&k=${relayKey}`, psk, phone, 'relay', handlers, done);
   });
   return () => cancel();
 }

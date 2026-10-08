@@ -13,9 +13,12 @@ import { sha256 } from '@noble/hashes/sha2.js';
 
 /**
  * What travels on the wire, as JSON. Byte strings are hex. Over Bluetooth, where the two ends
- * may share no secret yet, `hello` also carries a public key in `k`.
+ * may share no secret yet, `hello` also carries a public key in `k`. A phone that was given a key
+ * of its own, rather than the device's token, says which in `p`; the device answers `refused`
+ * in place of its own hello when it knows no such phone, so the phone can tell being turned
+ * away from the device being out of reach.
  */
-export type Frame = { t: 'hello'; n: string; k?: string } | { t: 'data'; b: string };
+export type Frame = { t: 'hello'; n: string; k?: string; p?: string } | { t: 'data'; b: string } | { t: 'refused' };
 
 export const NONCE_BYTES = 16;
 
@@ -23,10 +26,12 @@ const derive = (key: Uint8Array, salt: Uint8Array | undefined, info: string, len
   hkdf(sha256, key, salt, utf8ToBytes(info), length);
 
 /**
- * Everything derived from the shared token. The relay is shown `deviceId` and `relayKey`, from
+ * Everything derived from the device's token. The relay is shown `deviceId` and `relayKey`, from
  * which the token and `psk` cannot be recovered; `psk` never leaves the two ends.
  *
- * ponytail: the token is the only secret until M2 pairing gives each client its own key.
+ * The phone that set a device up holds its token. A phone it was shared with holds a secret of
+ * its own instead, uses only the `psk` derived from that, and is told the device's `deviceId`
+ * and `relayKey` so it can find it at the relay.
  */
 export function keysFromToken(token: string) {
   const secret = utf8ToBytes(token);
