@@ -66,6 +66,15 @@
           "neverForLocation": true,
           "bluetoothAlwaysPermission": "Toto uses Bluetooth to find and set up a Toto device nearby."
         }
+      ],
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Toto lets you send pictures from your library to your agents.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "scheme": "toto",

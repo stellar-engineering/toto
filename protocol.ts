@@ -3,11 +3,19 @@
 // Types only: always `import type` so neither Node nor Metro resolves this file at runtime.
 
 /** The common event stream every harness adapter maps onto. */
+/**
+ * A picture in a conversation, by reference: the picture itself stays on the device, and is asked
+ * for with `image` when someone wants to look at it.
+ */
+export type ImageRef = { id: string; mime: string; bytes: number };
+
 export type AgentEvent =
-  | { type: 'user'; text: string }
+  // `images`: pictures the person sent along with what they said.
+  | { type: 'user'; text: string; images?: ImageRef[] }
   | { type: 'text'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; id: string; output: string; isError: boolean }
+  // `images`: pictures the tool returned, such as a screenshot.
+  | { type: 'tool_result'; id: string; output: string; isError: boolean; images?: ImageRef[] }
   // `id` is the id of the tool call waiting on a decision.
   | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'approval_resolved'; id: string; allowed: boolean }
@@ -104,6 +112,8 @@ export type ServerMessage =
   | { type: 'joined'; secret: string }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
+  // The answer to `image`: piece `at` of `of`, as base64. A picture is too big to send in one message.
+  | { type: 'image'; agentId: string; id: string; at: number; of: number; data: string }
   // The answer to `ping`: this device is here, and this is what it is called.
   | { type: 'pong'; name: string }
   | { type: 'event'; agentId: string; event: AgentEvent }
@@ -147,7 +157,13 @@ export type ClientMessage =
   | { type: 'create_agent'; projectId: string; name: string; harness: Harness; mode: Mode; worktree: boolean }
   // Stops the agent and removes its history and, if it has one, its worktree. Its branch is kept.
   | { type: 'delete_agent'; agentId: string }
-  | { type: 'prompt'; agentId: string; text: string }
+  // `images` are ones this client has just sent with `upload`, by the ids it gave them.
+  | { type: 'prompt'; agentId: string; text: string; images?: { id: string; mime: string }[] }
+  // Ask for a picture from an agent's conversation. It comes back as `image` messages.
+  | { type: 'image'; agentId: string; id: string }
+  // One piece of a picture being sent to an agent: piece `at` of `of`, as base64. The client
+  // chooses `id` (16 hex characters) and names it in the `prompt` that follows.
+  | { type: 'upload'; id: string; at: number; of: number; data: string }
   // `answers` is for Claude's questions to the user (the AskUserQuestion tool): question text -> the label chosen,
   // several labels joined with ', ' when the question allows more than one.
   | { type: 'approve'; agentId: string; id: string; allow: boolean; answers?: Record<string, string> }

@@ -2,18 +2,19 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } from 'react-native';
-import { useConnection, type AgentEvent } from '../../connection';
+import { useConnection, type AgentEvent, type ImageRef } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
 import { Face } from '../../face';
+import { Attachments, Pictures, choosePictures, type Attached } from '../../pictures';
 import { Btn, Empty, Header, Loading, Reaching, Screen, Spinner, Txt, Waiting, styles as ui } from '../../ui';
 
 const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
-  | { kind: 'user' | 'text' | 'error'; text: string }
-  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean }; decision?: 'waiting' | boolean };
+  | { kind: 'user' | 'text' | 'error'; text: string; images?: ImageRef[] }
+  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[] }; decision?: 'waiting' | boolean };
 
 /** Folds the event stream into what is shown: each tool call carries its own result and approval. */
 function toRows(events: AgentEvent[]): Row[] {
@@ -29,7 +30,8 @@ function toRows(events: AgentEvent[]): Row[] {
     return row;
   };
   for (const e of events) {
-    if (e.type === 'user' || e.type === 'text') rows.push({ kind: e.type, text: e.text });
+    if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images });
+    else if (e.type === 'text') rows.push({ kind: 'text', text: e.text });
     else if (e.type === 'tool_call') tool(e.id, e.name, e.input);
     else if (e.type === 'approval_request') tool(e.id, e.name, e.input).decision = 'waiting';
     else if (e.type === 'approval_resolved') {
@@ -37,7 +39,7 @@ function toRows(events: AgentEvent[]): Row[] {
       if (row) row.decision = e.allowed;
     } else if (e.type === 'tool_result') {
       const row = tools.get(e.id);
-      if (row) row.result = { output: e.output, isError: e.isError };
+      if (row) row.result = { output: e.output, isError: e.isError, images: e.images };
     } else if (e.type === 'error') rows.push({ kind: 'error', text: e.message });
     else if (e.type === 'done' && e.isError) rows.push({ kind: 'error', text: 'Stopped on an error.' });
   }
@@ -125,7 +127,7 @@ function Questions({ name, questions, online, onDecide }: { name: string; questi
   );
 }
 
-function ToolRow({ row, online, deciding, onDecide }: { row: Extract<Row, { kind: 'tool' }>; online: boolean; /** An answer has been sent and the agent has not yet said it heard. */ deciding: boolean; onDecide: (allow: boolean, answers?: Record<string, string>) => void }) {
+function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Row, { kind: 'tool' }>; agentId: string; online: boolean; /** An answer has been sent and the agent has not yet said it heard. */ deciding: boolean; onDecide: (allow: boolean, answers?: Record<string, string>) => void }) {
   const [expanded, setExpanded] = useState(false);
   const what = brief(row.input);
 
@@ -168,6 +170,12 @@ function ToolRow({ row, online, deciding, onDecide }: { row: Extract<Row, { kind
       </Txt>
       {row.decision === false && <Txt tone="raspberry" small style={local.under}>you denied this</Txt>}
       {!expanded && !!firstLine && <Txt tone={row.result?.isError ? 'raspberry' : 'ghost'} small numberOfLines={1} style={local.under}>{firstLine}</Txt>}
+      {/* What the tool showed for its trouble, such as a screenshot: always on view, not tucked behind a tap. */}
+      {!!row.result?.images?.length && (
+        <View style={[local.under, { paddingTop: 8 }]}>
+          <Pictures agentId={agentId} images={row.result.images} />
+        </View>
+      )}
       {expanded && (
         <View style={local.under}>
           <Txt tone="ghost" small selectable>{JSON.stringify(row.input, null, 2)}</Txt>
@@ -179,7 +187,7 @@ function ToolRow({ row, online, deciding, onDecide }: { row: Extract<Row, { kind
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, activity, status, synced, post } = useConnection();
+  const { events: all, activity, status, synced, post, say } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
   const rows = useMemo(() => toRows(events).reverse(), [events]);
@@ -202,11 +210,25 @@ function Chat({ agentId }: { agentId: string }) {
   }
   const unechoed = sent && events.length <= sent.after ? sent.text : undefined;
 
+  // Pictures chosen to go with the next message.
+  const [attached, setAttached] = useState<Attached[]>([]);
+  const [choosing, setChoosing] = useState(false);
+  const attach = async () => {
+    setChoosing(true);
+    const more = await choosePictures().catch(() => {
+      Alert.alert('That did not work', 'Those pictures could not be read.');
+      return [];
+    });
+    setChoosing(false);
+    setAttached((have) => [...have, ...more].slice(0, 4));
+  };
+
   const send = () => {
-    if (!draft.trim()) return;
-    post({ type: 'prompt', agentId, text: draft });
-    setSent({ text: draft.trim(), after: events.length });
+    if (!draft.trim() && !attached.length) return;
+    say(agentId, draft, attached);
+    setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
     setDraft('');
+    setAttached([]);
   };
   const decide = (id: string) => (allow: boolean, answers?: Record<string, string>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -225,11 +247,14 @@ function Chat({ agentId }: { agentId: string }) {
         contentContainerStyle={[{ paddingVertical: 12 }, ui.talk]}
         renderItem={({ item }) =>
           item.kind === 'tool' ? (
-            <ToolRow row={item} online={online} deciding={!!deciding[item.id]} onDecide={decide(item.id)} />
+            <ToolRow row={item} agentId={agentId} online={online} deciding={!!deciding[item.id]} onDecide={decide(item.id)} />
           ) : item.kind === 'user' ? (
             <View style={local.user}>
               <Txt tone="amber" weight="bold">❯</Txt>
-              <Txt weight="medium" style={{ flex: 1 }} selectable>{item.text}</Txt>
+              <View style={{ flex: 1, gap: 8 }}>
+                {!!item.text && <Txt weight="medium" selectable>{item.text}</Txt>}
+                {!!item.images?.length && <Pictures agentId={agentId} images={item.images} />}
+              </View>
             </View>
           ) : item.kind === 'text' ? (
             <View style={local.text}>
@@ -260,6 +285,9 @@ function Chat({ agentId }: { agentId: string }) {
           </>
         }
       />
+      <View style={{ backgroundColor: color.bezel }}>
+        <Attachments attached={attached} onRemove={(i) => setAttached((have) => have.filter((_, at) => at !== i))} />
+      </View>
       <View style={local.composer}>
         <Txt tone="amber" weight="bold" style={{ paddingVertical: 11 }}>❯</Txt>
         <TextInput
@@ -286,7 +314,8 @@ function Chat({ agentId }: { agentId: string }) {
           editable={online}
           accessibilityLabel="Message"
         />
-        <Btn kind="primary" label="Send" onPress={send} disabled={!online || !draft.trim()} />
+        <Btn label="+" spoken="Add pictures" onPress={attach} busy={choosing} disabled={!online || attached.length >= 4} style={{ paddingHorizontal: 14 }} />
+        <Btn kind="primary" label="Send" onPress={send} disabled={!online || (!draft.trim() && !attached.length)} />
       </View>
     </View>
   );
