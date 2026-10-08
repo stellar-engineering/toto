@@ -34,6 +34,7 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 - **Secrets never go on a command line or through `sudo`'s environment**, because both are logged and visible to other users. They go on stdin or in a private file (`~/.toto-env` for agents).
 - **Nothing prints the device token except to a terminal.** `install.sh` is also run by the updater, whose output is kept in the system log.
 - **The server is the network-facing part and is not trusted with root.** `toto-priv` validates every argument itself. The updater takes no arguments at all: where it downloads from and which key it trusts are its own.
+- **After adding a package to `app/`, refresh its lockfile with the npm the workflows use:** `npx npm@11 install --package-lock-only --ignore-scripts`. `expo install` on a Mac writes one that a clean install on Linux rejects, and the deploy and release workflows fail at `npm ci`.
 - **A new message type needs both ends.** Add it to `protocol.ts`, handle it in `server/src/index.ts`, and remember older servers answer unknown types with a `failed` message, and older apps ignore unknown server messages.
 - **The relay is never believed.** It forwards sealed frames and hints ("a release exists"). Anything it says is checked by the device.
 - **Project users have UIDs 50000 to 59999.** The helper refuses to delete anything outside that range.
