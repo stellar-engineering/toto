@@ -118,7 +118,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -186,6 +186,14 @@ export default function Device() {
             about={claude === 'subscription' ? 'Signed in with your Claude subscription.' : claude === 'api_key' ? 'Using an Anthropic API key.' : 'Not signed in. Agents cannot work until it is.'}>
             <Btn kind={claude === 'none' ? 'primary' : 'plain'} label={claude === 'none' ? 'Sign in to Claude' : 'Change'} onPress={() => router.push('/claude')} />
           </Section>
+          {plugins && (
+            <>
+              <Rule />
+              <Section title="Plugins" about={plugins.some((p) => p.version) ? `${plugins.filter((p) => p.version).length} installed.` : 'Add things your agents can use, such as GitHub.'}>
+                <Btn label="Plugins" onPress={() => router.push('/plugins')} />
+              </Section>
+            </>
+          )}
           <Rule />
           {software ? (
             <Section

@@ -50,6 +50,7 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   const state = (): ServerMessage => ({
     type: 'state', name, claude: 'subscription', projects, agents, identity: { name: 'Demo', email: 'demo@example.com' },
     version: 'demo', updating: false, phones: [], owner: true,
+    plugins: [{ name: 'gh', description: 'GitHub’s command line, for agents: pull requests, issues and checks.', login: true }],
   });
   const emit = (agentId: string, event: AgentEvent) => {
     (logs[agentId] ??= []).push(event);
