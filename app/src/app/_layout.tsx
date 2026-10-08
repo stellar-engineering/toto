@@ -109,7 +109,8 @@ function Root() {
   const [dealtWith, setDealtWith] = useState<string>();
   // The same for a link to the demo, which needs nothing but opening.
   const { addDemo } = useConnection();
-  const wantsDemo = status === 'setup' && !!url && ['demo'].includes(Linking.parse(url).hostname ?? Linking.parse(url).path ?? '');
+  // toto://demo on a phone, where "demo" is the host; https://…/app/demo in a browser, where it is the end of the path.
+  const wantsDemo = status === 'setup' && !!url && (Linking.parse(url).hostname === 'demo' || /(^|\/)demo$/.test(Linking.parse(url).path ?? ''));
   useEffect(() => {
     if (wantsDemo) addDemo();
     // `addDemo` is new each render; this is about the link.
