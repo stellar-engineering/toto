@@ -138,6 +138,9 @@ export type ServerMessage =
   | { type: 'joined'; secret: string }
   // The answer to `claude_login`: the page to open to sign in. It ends by showing a code to send back.
   | { type: 'claude_login'; url: string }
+  // How a job on the device is going, sent as it changes, so the whole `state` need not be (and so an
+  // app that does not know this message is not told its own request has been answered). Absent: no job.
+  | { type: 'progress'; progress?: Progress }
   // The answer to `plugin_login`: open `url` and enter `code` there. The device finishes by itself,
   // and says so with a new `state`, or with `failed`.
   | { type: 'plugin_login'; name: string; url: string; code: string }

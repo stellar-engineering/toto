@@ -276,6 +276,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         setPending(undefined);
         setClaudeLogin(msg.url);
         break;
+      case 'progress':
+        setProgress(msg.progress);
+        break;
       case 'plugin_login':
         setPending(undefined);
         setPluginLogin({ name: msg.name, url: msg.url, code: msg.code });

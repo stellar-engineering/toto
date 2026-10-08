@@ -141,7 +141,8 @@ function follow(grace = 5000) {
     const now = readProgress();
     if (JSON.stringify(now.shown) !== JSON.stringify(progress)) {
       progress = now.shown;
-      broadcast(snapshot());
+      // Not a whole `state`: an app takes that as the answer to whatever it asked for last.
+      broadcast({ type: 'progress', progress });
     }
     if (now.active || Date.now() - began < grace) return;
     clearInterval(following);
