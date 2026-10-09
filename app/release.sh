@@ -35,7 +35,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 [ -d "$ANDROID_HOME" ] || die "no Android SDK at $ANDROID_HOME. Set ANDROID_HOME."
 eas() { npx --yes eas-cli@latest "$@"; }
 
-echo "Checking $version…"
+echo "Checking ${version}…"
 npx tsc --noEmit
 
 out="${TOTO_BUILDS:-$HOME/Downloads}"
