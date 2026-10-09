@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent, ImageRef } from '../../protocol.ts';
+import { flagOn } from './flags.ts';
 import { command, dataDir } from './projects.ts';
 
 // The browser for agents: a plugin shipped with the server (so every project has it, and an update
@@ -46,12 +47,12 @@ const blockText = (content: unknown, kept: boolean): string =>
       : '';
 
 /**
- * For finding out what Claude really sends about subagents: with TOTO_DEBUG_STREAM set, the messages
+ * For finding out what Claude really sends about subagents: with the debugStream flag on, the messages
  * that are about them (system messages, anything from inside one, the calls that start them) are kept,
  * cut short and without picture data, in a private file in the data directory.
  */
 function debugStream(msg: any, line: string) {
-  if (!process.env.TOTO_DEBUG_STREAM) return;
+  if (!flagOn('debugStream')) return;
   if (!(msg?.type === 'system' || msg?.parent_tool_use_id || /"name":"(Agent|Task)"|agentId/.test(line))) return;
   const short = line.replace(/"data":"[^"]{100,}"/g, '"data":"…"').slice(0, 3000);
   appendFileSync(join(dataDir, 'debug-stream.jsonl'), short + '\n', { mode: 0o600 });

@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Identity, ImageRef, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -10,7 +10,7 @@ import { read, write } from './storage';
 import { type Link, type Unreachable, type Route, type Settings, deviceIdOf, ping, reach } from './link';
 import { pushToken } from './push';
 
-export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Mode, Plugin, Progress, Project, TermKey } from '../../protocol';
+export type { ImageRef, Phone, Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Harness, Identity, Flag, Mode, Plugin, Progress, Project, TermKey } from '../../protocol';
 export type { Settings } from './link';
 export type { Invitation, Invite } from './invite';
 
@@ -75,6 +75,8 @@ type Connection = {
   live: Record<string, string>;
   /** A job the Toto is doing (an update, a plugin install), or one that failed lately. */
   progress?: Progress;
+  /** The debugging switches this Toto has, and whether each is on. Undefined on a Toto too old to have them. */
+  flags?: Flag[];
   /** What can be added to this Toto, and what has been. Undefined on a Toto too old to have plugins. */
   plugins?: Plugin[];
   /** The code to enter, and where, for a plugin sign-in that is under way. */
@@ -187,6 +189,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [claudeLogin, setClaudeLogin] = useState<string>();
   const [plugins, setPlugins] = useState<Plugin[]>();
   const [progress, setProgress] = useState<Progress>();
+  const [flags, setFlags] = useState<Flag[]>();
   const [live, setLive] = useState<Connection['live']>({});
   const [queued, setQueued] = useState<Connection['queued']>({});
   const [pluginLogin, setPluginLogin] = useState<Connection['pluginLogin']>();
@@ -239,6 +242,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           return msg.claude;
         });
         setPlugins(msg.plugins);
+        setFlags(msg.flags);
         setProgress(msg.progress);
         // A sign-in that finished, or whose plugin has gone, is over.
         setPluginLogin((was) => {
@@ -386,6 +390,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     setClaude(undefined);
     setClaudeLogin(undefined);
     setPlugins(undefined);
+    setFlags(undefined);
     setProgress(undefined);
     setLive({});
     setQueued({});
@@ -522,7 +527,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [activity]);
 
   return (
-    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
+    <Context.Provider value={{ status, nodes: saved.nodes, node, via, addNode, switchTo, learnName, relocate, forget, post, request, pending, busy: !!pending, trying, loaded, synced, projects, agents, claude, claudeLogin, plugins, flags, progress, live, queued, pluginLogin, phones, owner, invite, doneSharing: () => setInvite(undefined), join, addDemo, software, identity, sshKey, events, activity, tally, screens, pictures, wantPicture, wantFile, dropPicture, say }}>
       {children}
     </Context.Provider>
   );

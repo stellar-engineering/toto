@@ -12,6 +12,7 @@ import { type Screen, killTerminal, openTerminal, watchTerminal } from './termin
 import { startBluetooth } from './ble.ts';
 import { startClaude } from './claude.ts';
 import { cancelPluginLogin, checkToken, describe, installPlugin, installed, isPluginName, keepToken, listed, loginNames, removePlugin, startPluginLogin, useTokens } from './plugins.ts';
+import { describeFlags, setFlag } from './flags.ts';
 import { readProgress } from './progress.ts';
 import { type PushKind, isPushToken, push } from './push.ts';
 import { type Frame, NONCE_BYTES, keysFromToken, session } from './secure.ts';
@@ -186,6 +187,7 @@ const snapshot = (): ServerMessage => ({
   // Each client is told the truth about itself as its copy is sent (see accept).
   owner: true,
   plugins: describe(installed(), offered),
+  flags: describeFlags(),
 });
 
 /** The phones this device is shared with, less any invitation that ran out unused. */
@@ -632,6 +634,10 @@ async function handle(msg: ClientMessage, ws: Client) {
       });
       return send(ws, { type: 'plugin_login', name, ...shown });
     }
+    case 'set_flag':
+      if (ws.phone) throw new Error('Only the phone that set this Toto up can change its settings.');
+      setFlag(msg.name, msg.on);
+      return broadcast(snapshot());
     case 'plugin_token': {
       const { login } = installedPlugin(ws, msg.name);
       if (!login?.paste) throw new Error('That plugin is not signed in to with a token.');

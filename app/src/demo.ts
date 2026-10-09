@@ -57,6 +57,7 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   // (The first agent starts with a question already open.)
   const working = new Set<string>(['a0000001']);
   let writerDone = false;
+  let flagOn = false;
   const waiting: Record<string, { text: string }[]> = {};
   let next = 0;
   const id = () => `d${String(++next).padStart(7, '0')}`;
@@ -64,6 +65,7 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   const state = (): ServerMessage => ({
     type: 'state', name, claude: 'subscription', projects, agents, identity: { name: 'Demo', email: 'demo@example.com' },
     version: 'demo', updating: false, phones: [], owner: true,
+    flags: [{ name: 'debugStream', label: 'Keep subagent messages', about: 'Saves the messages Claude sends about subagents to a private file on this Toto, to see what is really in them. Shortened, with no pictures.', on: flagOn }],
     plugins: [{ name: 'gh', description: 'GitHub’s command line, for agents: pull requests, issues and checks.', login: true }],
   });
   const emit = (agentId: string, event: AgentEvent) => {
@@ -117,6 +119,9 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
           return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] });
         }
         return ask(msg.agentId, msg.text);
+      case 'set_flag':
+        flagOn = msg.on;
+        return say(state());
       case 'unqueue':
         waiting[msg.agentId]?.splice(msg.index, 1);
         return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });

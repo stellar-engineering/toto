@@ -100,6 +100,9 @@ export type Plugin = {
   paste?: { url: string; help: string };
 };
 
+/** A switch for finding things out, on a Toto. */
+export type Flag = { name: string; label: string; about: string; on: boolean };
+
 /** What a long job on the device (an update, a plugin install) is doing: `task` is 'update' or 'plugin:<name>'. `failed` when it ended badly. */
 export type Progress = { task: string; text: string; step?: number; of?: number; failed?: boolean };
 
@@ -130,6 +133,8 @@ export type ServerMessage =
       owner: boolean;
       /** Absent from a Toto that predates plugins. */
       plugins?: Plugin[];
+      /** Absent from a Toto that predates them. */
+      flags?: Flag[];
       /** A job under way, or one that failed in the last few minutes. */
       progress?: Progress;
     }
@@ -188,6 +193,8 @@ export type ClientMessage =
   | { type: 'join' }
   // Owner only: add a plugin to this device (or bring it up to date), take it away, and sign in
   // to it or out of it. Signing in is shared by every project on the device.
+  // Owner only: turn a debugging switch (see `flags` in `state`) on or off.
+  | { type: 'set_flag'; name: string; on: boolean }
   | { type: 'plugin_install'; name: string }
   | { type: 'plugin_remove'; name: string }
   | { type: 'plugin_login'; name: string }

@@ -118,7 +118,7 @@ const Section = ({ title, about, children }: { title: string; about: string; chi
 );
 
 export default function Device() {
-  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, progress, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
+  const { status, via, node: settings, nodes, identity, sshKey, claude, plugins, flags, progress, software, phones, owner, request, busy, pending, loaded, trying, forget } = useConnection();
   const router = useRouter();
 
   const confirmForget = () =>
@@ -251,6 +251,27 @@ export default function Device() {
             </>
           )}
           </>
+          )}
+          {owner && !!flags?.length && (
+            <>
+              <Rule />
+              <Section title="Debugging" about="Switches for finding out what is going on. They take effect at once, and are best left off.">
+                {flags.map((flag) => (
+                  <View key={flag.name} style={{ gap: 6, marginBottom: 12 }}>
+                    <Txt weight="medium">{flag.label}</Txt>
+                    <Txt tone="ghost" small>{flag.about}</Txt>
+                    <Btn
+                      kind={flag.on ? 'primary' : 'plain'}
+                      label={flag.on ? 'On. Turn off' : 'Off. Turn on'}
+                      spoken={`${flag.label}: ${flag.on ? 'on. Turn off' : 'off. Turn on'}`}
+                      onPress={() => request({ type: 'set_flag', name: flag.name, on: !flag.on })}
+                      busy={pending?.type === 'set_flag' && pending.name === flag.name}
+                      disabled={busy || status !== 'open'}
+                    />
+                  </View>
+                ))}
+              </Section>
+            </>
           )}
           <Rule />
           <View style={[{ padding: gutter, paddingTop: 24 }, styles.readable]}>
