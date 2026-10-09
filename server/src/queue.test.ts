@@ -65,6 +65,14 @@ test('a message sent mid-turn can wait for the turn to end, be taken back, or go
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(phone.said.filter((m) => m.type === 'queue').length, told);
 
+  // A waiting message can be sent in at once, to steer: out of the line and into the turn.
+  phone.send({ type: 'prompt', agentId: agent.id, text: 'fourth', later: true });
+  assert.deepEqual((await phone.next('queue')).items, [{ text: 'second' }, { text: 'fourth' }]);
+  phone.send({ type: 'steer', agentId: agent.id, index: 1 });
+  assert.deepEqual((await phone.next('queue')).items, [{ text: 'second' }]);
+  await eventually('a waiting message sent now goes straight in', () => said('fourth') === 1);
+  assert.equal(said('second'), 0);
+
   // Without `later`, mid-turn, it steers: it goes straight in.
   phone.send({ type: 'prompt', agentId: agent.id, text: 'steer' });
   await eventually('a steering message goes straight in', () => said('steer') === 1);

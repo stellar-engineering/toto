@@ -301,13 +301,13 @@ function Chat({ agentId }: { agentId: string }) {
     setAttached((have) => [...have, ...more].slice(0, 4));
   };
 
-  // Partway through a turn, a message can wait for the turn to end (the usual) or go in at once and steer it.
+  // Partway through a turn, what is sent waits for the turn to end; a waiting message can then be sent in at once, to steer.
   const midTurn = state === 'working' || state === 'waiting';
-  const send = (later = false) => {
+  const send = () => {
     if (!draft.trim() && !attached.length) return;
-    say(agentId, draft, attached, later);
+    say(agentId, draft, attached, midTurn);
     // A message that waits is shown with the others that are waiting, not as one on its way.
-    if (!(later && midTurn)) setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
+    if (!midTurn) setSent({ text: draft.trim() || (attached.length === 1 ? 'a picture' : `${attached.length} pictures`), after: events.length });
     setDraft('');
     setAttached([]);
   };
@@ -363,6 +363,10 @@ function Chat({ agentId }: { agentId: string }) {
                   {!!item.images?.length && <Txt tone="ghost" small>{item.images.length === 1 ? 'a picture' : `${item.images.length} pictures`}</Txt>}
                   <Txt tone="ghost" small>waiting for it to finish</Txt>
                 </View>
+                {/* Now, not later: into the turn in progress, to steer it. */}
+                <Pressable onPress={() => post({ type: 'steer', agentId, index: i })} hitSlop={10} accessibilityRole="button" accessibilityLabel="Send this now, to steer what it is doing">
+                  <Txt tone="amber" weight="bold">»</Txt>
+                </Pressable>
                 <Pressable onPress={() => post({ type: 'unqueue', agentId, index: i })} hitSlop={10} accessibilityRole="button" accessibilityLabel="Take this message back">
                   <Txt tone="ghost" weight="bold">x</Txt>
                 </Pressable>
@@ -403,7 +407,7 @@ function Chat({ agentId }: { agentId: string }) {
                   const event = e.nativeEvent as unknown as KeyboardEvent;
                   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
                   event.preventDefault();
-                  send(midTurn);
+                  send();
                 }
               : undefined
           }
@@ -416,8 +420,7 @@ function Chat({ agentId }: { agentId: string }) {
           accessibilityLabel="Message"
         />
         <Btn label="+" spoken="Add pictures" onPress={attach} busy={choosing} disabled={!online || attached.length >= 4} style={{ paddingHorizontal: 14 }} />
-        {midTurn && <Btn label="Steer" spoken="Send now, to steer what it is doing" onPress={() => send(false)} disabled={!online || (!draft.trim() && !attached.length)} />}
-        <Btn kind="primary" label={midTurn ? 'Queue' : 'Send'} spoken={midTurn ? 'Queue until it has finished' : undefined} onPress={() => send(midTurn)} disabled={!online || (!draft.trim() && !attached.length)} />
+        <Btn kind="primary" label={midTurn ? 'Queue' : 'Send'} spoken={midTurn ? 'Queue until it has finished' : undefined} onPress={send} disabled={!online || (!draft.trim() && !attached.length)} />
       </View>
     </View>
   );

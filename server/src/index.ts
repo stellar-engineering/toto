@@ -260,16 +260,19 @@ function deliver(agent: AgentRecord, text: string, pictures: { ref: ImageRef; mi
   (running.get(agent.id) ?? start(agent)).send(text, pictures);
 }
 
+/** The pictures a waiting message held, read back from where they were kept. */
+const picturesOf = (agent: AgentRecord, refs: ImageRef[]) =>
+  refs.flatMap((ref) => {
+    const bytes = readImage(agent.id, ref.id);
+    return bytes ? [{ ref, mime: ref.mime, data: bytes.toString('base64') }] : [];
+  });
+
 /** Its turn is over: says the next thing that was waiting, if anything was. Resolves to whether it did. */
 function sayNext(agent: AgentRecord) {
   const next = queues.get(agent.id)?.shift();
   if (!next) return false;
   tellQueue(agent.id);
-  const pictures = next.images.flatMap((ref) => {
-    const bytes = readImage(agent.id, ref.id);
-    return bytes ? [{ ref, mime: ref.mime, data: bytes.toString('base64') }] : [];
-  });
-  deliver(agent, next.text, pictures);
+  deliver(agent, next.text, picturesOf(agent, next.images));
   return true;
 }
 
@@ -590,6 +593,13 @@ async function handle(msg: ClientMessage, ws: Client) {
         return tellQueue(agent.id);
       }
       return deliver(agent, msg.text, pictures);
+    }
+    case 'steer': {
+      const waiting = queues.get(msg.agentId);
+      const [next] = agent && waiting && Number.isInteger(msg.index) && waiting[msg.index] ? waiting.splice(msg.index, 1) : [];
+      if (!agent || !next) return;
+      tellQueue(agent.id);
+      return deliver(agent, next.text, picturesOf(agent, next.images));
     }
     case 'unqueue': {
       const waiting = queues.get(msg.agentId);

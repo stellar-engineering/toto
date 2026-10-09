@@ -122,6 +122,11 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       case 'set_flag':
         flagOn = msg.on;
         return say(state());
+      case 'steer': {
+        const [next] = waiting[msg.agentId]?.splice(msg.index, 1) ?? [];
+        say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });
+        return next && emit(msg.agentId, { type: 'user', text: next.text });
+      }
       case 'unqueue':
         waiting[msg.agentId]?.splice(msg.index, 1);
         return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });

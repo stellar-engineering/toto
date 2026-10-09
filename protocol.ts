@@ -217,6 +217,8 @@ export type ClientMessage =
   // `later`: if the agent is partway through a turn, hold this until it ends (see `queue`) and not
   // before; without it, a message sent mid-turn goes in at once and steers the turn in progress.
   | { type: 'prompt'; agentId: string; text: string; images?: { id: string; mime: string }[]; later?: boolean }
+  // Takes the `index`th waiting message out of the line and says it now, partway through the turn, to steer it.
+  | { type: 'steer'; agentId: string; index: number }
   // Takes the `index`th waiting message back.
   | { type: 'unqueue'; agentId: string; index: number }
   // Ask for a picture from an agent's conversation. It comes back as `image` messages.
