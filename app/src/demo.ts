@@ -44,6 +44,10 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     ],
     a0000003: [],
   };
+  // Agents partway through a turn, and what has been left waiting for each.
+  // (The first agent starts with a question already open.)
+  const working = new Set<string>(['a0000001']);
+  const waiting: Record<string, { text: string }[]> = {};
   let next = 0;
   const id = () => `d${String(++next).padStart(7, '0')}`;
   const later = (ms: number, what: () => void) => setTimeout(what, ms);
@@ -96,17 +100,16 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       case 'set_mode':
         agents = agents.map((a) => (a.id === msg.agentId ? { ...a, mode: msg.mode } : a));
         return say(state());
-      case 'prompt': {
-        // Whatever is asked, it does the same small job: reads, stops to ask, and finishes when allowed.
-        emit(msg.agentId, { type: 'user', text: msg.text });
-        const call = id();
-        later(1200, () => emit(msg.agentId, { type: 'tool_call', id: call, name: 'Bash', input: { command: 'npm test' } }));
-        return void later(1600, () => {
-          const auto = agents.find((a) => a.id === msg.agentId)?.mode === 'auto';
-          emit(msg.agentId, { type: 'approval_request', id: call, name: 'Bash', input: { command: 'npm test' } });
-          if (auto) decide(msg.agentId, call, true);
-        });
-      }
+      case 'prompt':
+        // Mid-turn, a message that is to wait does; anything else goes in at once.
+        if (msg.later && working.has(msg.agentId)) {
+          (waiting[msg.agentId] ??= []).push({ text: msg.text });
+          return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] });
+        }
+        return ask(msg.agentId, msg.text);
+      case 'unqueue':
+        waiting[msg.agentId]?.splice(msg.index, 1);
+        return say({ type: 'queue', agentId: msg.agentId, items: waiting[msg.agentId] ?? [] });
       case 'approve':
         return decide(msg.agentId, msg.id, msg.allow);
       case 'term_open':
@@ -123,12 +126,35 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     }
   };
 
+  // Whatever is asked, it does the same small job: reads, stops to ask, and finishes when allowed.
+  function ask(agentId: string, text: string) {
+    working.add(agentId);
+    emit(agentId, { type: 'user', text });
+    const call = id();
+    later(1200, () => emit(agentId, { type: 'tool_call', id: call, name: 'Bash', input: { command: 'npm test' } }));
+    later(1600, () => {
+      const auto = agents.find((a) => a.id === agentId)?.mode === 'auto';
+      emit(agentId, { type: 'approval_request', id: call, name: 'Bash', input: { command: 'npm test' } });
+      if (auto) decide(agentId, call, true);
+    });
+  }
+
+  /** The turn is over: whatever was waiting is said next. */
+  function finish(agentId: string) {
+    working.delete(agentId);
+    emit(agentId, { type: 'done', isError: false });
+    const next = waiting[agentId]?.shift();
+    if (!next) return;
+    say({ type: 'queue', agentId, items: waiting[agentId] });
+    ask(agentId, next.text);
+  }
+
   function decide(agentId: string, call: string, allow: boolean) {
     emit(agentId, { type: 'approval_resolved', id: call, allowed: allow });
-    if (!allow) return void later(600, () => emit(agentId, { type: 'done', isError: false }));
+    if (!allow) return void later(600, () => finish(agentId));
     later(1400, () => emit(agentId, { type: 'tool_result', id: call, output: 'Tests: 41 passed, 41 total', isError: false }));
     later(2400, () => emit(agentId, { type: 'text', text: REPLY }));
-    later(2500, () => emit(agentId, { type: 'done', isError: false }));
+    later(2500, () => finish(agentId));
   }
 }
 

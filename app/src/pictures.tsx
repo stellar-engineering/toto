@@ -1,7 +1,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Image, Modal, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Dimensions, Image, Modal, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnection, type ImageRef } from './connection';
 import { savePicture } from './save';
@@ -115,6 +115,17 @@ class Zoom {
     this.show(view);
   }
 
+  /** A mouse wheel, or a trackpad's pinch (which arrives as one), in a browser: larger about the pointer. */
+  wheel(e: { clientX: number; clientY: number; deltaY: number; deltaMode: number }) {
+    const f = this.view;
+    const scale = clamp(f.scale * Math.exp((-e.deltaY * (e.deltaMode === 1 ? 16 : 1)) / 300), 1, MOST);
+    const cx = this.area.x + this.area.width / 2;
+    const cy = this.area.y + this.area.height / 2;
+    const ratio = scale / f.scale;
+    const reach = { x: ((scale - 1) * this.area.width) / 2, y: ((scale - 1) * this.area.height) / 2 };
+    this.put(scale === 1 ? WHOLE : { scale, x: clamp(e.clientX - cx - ratio * (e.clientX - cx - f.x), -reach.x, reach.x), y: clamp(e.clientY - cy - ratio * (e.clientY - cy - f.y), -reach.y, reach.y) });
+  }
+
   responder = PanResponder.create({
     // Taps are the picture's own; this only takes over for two fingers, or a drag once enlarged.
     onStartShouldSetPanResponder: () => false,
@@ -160,6 +171,17 @@ function Zoomable({ uri, onTap }: { uri: string; onTap: () => void }) {
   const [view, setView] = useState(WHOLE);
   const [zoom] = useState(() => new Zoom(setView));
   const box = useRef<View>(null);
+  // React Native has no wheel event, so a browser's is listened for on the page element itself.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const element = box.current as unknown as HTMLElement | null;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoom.wheel(e);
+    };
+    element?.addEventListener('wheel', wheel, { passive: false });
+    return () => element?.removeEventListener('wheel', wheel);
+  }, [zoom]);
   return (
     <View
       ref={box}
