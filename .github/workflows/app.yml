@@ -1,0 +1,26 @@
+# An app release is marked with a tag, app-v1.2.3, made by app/release.sh on the machine that
+# built it. This checks the tag says what the app says, and that the app at that commit is sound.
+# It makes no GitHub Release, on purpose: Totos update from the latest one.
+name: App release
+on:
+  push:
+    tags: ['app-v*']
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The tag is the version
+        run: test "app-v$(node -p "require('./app/app.json').expo.version")" = "$GITHUB_REF_NAME"
+      - name: Check
+        working-directory: app
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx expo lint

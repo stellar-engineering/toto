@@ -57,6 +57,12 @@ Tests are `node --test`, next to the code as `*.test.ts` or `*.test.mjs`. No tes
 
 A release reaches real devices as root. Before tagging, run the changed path on a real Linux install, not only the tests.
 
+### The app has versions of its own
+
+The app's version is `expo.version` in `app/app.json`, and its releases are tagged `app-v1.2.3`. To release the Android app: bump that version, commit, push, then run `app/release.sh` on a machine with the Android SDK and an `eas login` (add `--play` to send it to Play's internal testing too). It builds locally, uploads the build to EAS and pushes the tag.
+
+**Never make a GitHub Release for an app tag.** Totos update from `releases/latest`, and the site reads it too; an app release there would be offered to every Toto as a server update and fail. Server tags are `v*`, app tags are `app-v*`, and the two workflows match on exactly those.
+
 ## Deploying the site and relay
 
 `.github/workflows/deploy.yml` deploys both when `site/` or `relay/` changes on main, if there is a `CLOUDFLARE_API_TOKEN` secret. By hand: `cd relay && npx wrangler deploy`.

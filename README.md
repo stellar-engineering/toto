@@ -100,6 +100,8 @@ git tag v0.2.0 && git push origin v0.2.0
 
 The [workflow](.github/workflows/release.yml) tests, bundles and signs the update, publishes it with the flashable image, and tells the Totos that are online. A Toto installs an update only if it is signed with the release key, whose public half is [`release.pub`](release.pub), and is newer than what it has.
 
+The app is versioned separately: `expo.version` in `app/app.json`, tagged `app-v1.2.3` by `app/release.sh`, which builds the Android app on the machine it is run on and uploads it to EAS. App tags do not become GitHub Releases, because a Toto takes the latest release as its next update.
+
 A fork that wants to publish its own updates needs its own key pair: replace `release.pub`, keep the private half in the `RELEASE_KEY` secret, and point `RELEASES` in `server/src/index.ts` and `bin/toto-update.mjs` at your repository.
 
 ## Security
