@@ -155,7 +155,8 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
     later(1600, () => {
       const auto = agents.find((a) => a.id === agentId)?.mode === 'auto';
       emit(agentId, { type: 'approval_request', id: call, name: 'Bash', input: { command: 'npm test' } });
-      if (auto) decide(agentId, call, true);
+      // A real Toto allows it a moment after asking, in a message of its own.
+      if (auto) later(150, () => decide(agentId, call, true));
     });
   }
 

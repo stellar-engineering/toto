@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
+import type { Agent, AgentEvent, ClaudeAccount, ClientMessage, FileRef, Flag, Identity, ImageRef, Mode, Phone, Plugin, Progress, Project, ServerMessage } from '../../protocol';
 import { bytesToHex } from '@noble/ciphers/utils.js';
 import { getRandomValues } from 'expo-crypto';
 import { DEMO, DEMO_NODE } from './demo';
@@ -128,14 +128,21 @@ export const useConnection = () => {
 /** One line saying what a job is doing and how far it has got. */
 export const progressText = (p: Progress) => `${p.text}${p.step && p.of ? ` (${p.step} of ${p.of})` : ''}`;
 
-export function activityOf(events: AgentEvent[]): Activity {
+/**
+ * Whether a tool's approval is something the person is being asked. A full-auto agent has the server
+ * allow its tools at once, a moment after asking, so those are never shown as questions: a card that
+ * appears and goes again is just a flicker. Its questions to the person are still shown.
+ */
+export const asksYou = (mode: Mode | undefined, tool: string) => mode !== 'auto' || tool === 'AskUserQuestion';
+
+export function activityOf(events: AgentEvent[], mode?: Mode): Activity {
   let state: Activity = 'idle';
   const open = new Set<string>();
   for (const e of events) {
     if (e.type === 'user') state = 'working';
     else if (e.type === 'done') state = e.isError ? 'failed' : 'idle';
     else if (e.type === 'error') state = 'failed';
-    else if (e.type === 'approval_request') open.add(e.id);
+    else if (e.type === 'approval_request' && asksYou(mode, e.name)) open.add(e.id);
     else if (e.type === 'approval_resolved') open.delete(e.id);
   }
   return open.size ? 'waiting' : state;
@@ -209,6 +216,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const abandon = useRef<() => void>(() => {});
   const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
   const caughtUp = useRef(false);
+  // How each agent approves its tools, as of the last state, for the things that happen between states.
+  const modes = useRef<Record<string, Mode>>({});
   // Histories being replayed. They are shown all at once when the replay ends, so a reconnect
   // swaps the old conversation for the new one instead of emptying the screen and refilling it.
   const replay = useRef<Connection['events']>({});
@@ -231,6 +240,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const receive = (to: Node, msg: ServerMessage) => {
     switch (msg.type) {
       case 'state':
+        modes.current = Object.fromEntries(msg.agents.map((a) => [a.id, a.mode]));
         setProjects(msg.projects);
         setAgents(msg.agents);
         setSshKey(msg.sshKey);
@@ -270,7 +280,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         }
         setEvents((all) => ({ ...all, [msg.agentId]: [...(all[msg.agentId] ?? []), msg.event] }));
         // An agent has just stopped to ask. Worth a tap on the wrist, but not for old history.
-        if (caughtUp.current && msg.event.type === 'approval_request')
+        if (caughtUp.current && msg.event.type === 'approval_request' && asksYou(modes.current[msg.agentId], msg.event.name))
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
         break;
       case 'synced':
@@ -520,7 +530,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     post(message);
   };
 
-  const activity = useMemo(() => Object.fromEntries(agents.map((a) => [a.id, activityOf(events[a.id] ?? [])])), [agents, events]);
+  const activity = useMemo(() => Object.fromEntries(agents.map((a) => [a.id, activityOf(events[a.id] ?? [], a.mode)])), [agents, events]);
   const tally = useMemo(() => {
     const states = Object.values(activity);
     return { working: states.filter((s) => s === 'working').length, waiting: states.filter((s) => s === 'waiting').length };

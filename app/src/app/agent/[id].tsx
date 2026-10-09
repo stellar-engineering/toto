@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View, Platform } from 'react-native';
-import { useConnection, type AgentEvent, type FileRef, type ImageRef } from '../../connection';
+import { asksYou, useConnection, type AgentEvent, type FileRef, type ImageRef, type Mode } from '../../connection';
 import { Markdown } from '../../markdown';
 import { Terminal } from '../../terminal';
 import { color, gutter, tap } from '../../theme';
@@ -24,7 +24,7 @@ const isSubagent = (row: ToolItem) => row.name === 'Agent' || row.name === 'Task
 const callsIn = (row: ToolItem): ToolItem[] => row.children.flatMap((c) => (c.kind === 'tool' ? [c, ...callsIn(c)] : []));
 
 /** Folds the event stream into what is shown: each tool call carries its own result and approval. */
-function toRows(events: AgentEvent[]): Row[] {
+function toRows(events: AgentEvent[], mode?: Mode): Row[] {
   const rows: Row[] = [];
   const tools = new Map<string, ToolItem>();
   // Where a row goes: with the call that started the subagent it happened inside, or else with the conversation.
@@ -42,7 +42,10 @@ function toRows(events: AgentEvent[]): Row[] {
     if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images });
     else if (e.type === 'text') listFor(e.parent).push({ kind: 'text', text: e.text });
     else if (e.type === 'tool_call') tool(e.id, e.name, e.input, e.parent);
-    else if (e.type === 'approval_request') tool(e.id, e.name, e.input).decision = 'waiting';
+    else if (e.type === 'approval_request') {
+      const row = tool(e.id, e.name, e.input);
+      if (asksYou(mode, e.name)) row.decision = 'waiting';
+    }
     else if (e.type === 'approval_resolved') {
       const row = tools.get(e.id);
       if (row) row.decision = e.allowed;
@@ -259,16 +262,17 @@ function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; 
 }
 
 function Chat({ agentId }: { agentId: string }) {
-  const { events: all, live: written, queued, activity, status, synced, post, say } = useConnection();
+  const { events: all, live: written, queued, activity, agents, status, synced, post, say } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
+  const mode = agents.find((a) => a.id === agentId)?.mode;
   // Newest first, for an inverted list: it opens at the latest message and stays pinned there as more arrive.
   // What the agent is writing now, as the newest message, until the whole of it arrives and takes its place.
   const writing = written[agentId];
   const rows = useMemo(() => {
-    const done = toRows(events).reverse();
+    const done = toRows(events, mode).reverse();
     if (writing) done.unshift({ kind: 'text', text: writing });
     return done;
-  }, [events, writing]);
+  }, [events, writing, mode]);
   const [draft, setDraft] = useState('');
   // In a browser the box does not grow with what is typed unless told how tall its text has become.
   const [tall, setTall] = useState(0);
@@ -396,7 +400,8 @@ function Chat({ agentId }: { agentId: string }) {
       <View style={local.composer}>
         <Txt tone="amber" weight="bold" style={{ paddingVertical: 11 }}>❯</Txt>
         <TextInput
-          style={[ui.input, { maxHeight: 160 }, Platform.OS === 'web' && { height: Math.max(40, Math.min(160, tall)) }]}
+          // The same line height and padding as the chevron beside it, so the first line sits level with it.
+          style={[ui.input, { maxHeight: 160, lineHeight: 22, paddingVertical: 11 }, Platform.OS === 'web' && { height: Math.max(44, Math.min(160, tall)) }]}
           value={draft}
           onChangeText={setDraft}
           onContentSizeChange={(e) => setTall(e.nativeEvent.contentSize.height)}
