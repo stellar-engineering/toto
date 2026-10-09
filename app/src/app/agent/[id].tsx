@@ -15,25 +15,33 @@ const NO_EVENTS: AgentEvent[] = [];
 
 type Row =
   | { kind: 'user' | 'text' | 'error'; text: string; images?: ImageRef[] }
-  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean };
+  | { kind: 'tool'; id: string; name: string; input: unknown; result?: { output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }; decision?: 'waiting' | boolean; children: Row[] };
+type ToolItem = Extract<Row, { kind: 'tool' }>;
+
+/** A call that starts a subagent (`Agent`, once called `Task`). What the subagent does is its `children`. */
+const isSubagent = (row: ToolItem) => row.name === 'Agent' || row.name === 'Task';
+/** Every tool call inside a row, at any depth, in the order they happened. */
+const callsIn = (row: ToolItem): ToolItem[] => row.children.flatMap((c) => (c.kind === 'tool' ? [c, ...callsIn(c)] : []));
 
 /** Folds the event stream into what is shown: each tool call carries its own result and approval. */
 function toRows(events: AgentEvent[]): Row[] {
   const rows: Row[] = [];
-  const tools = new Map<string, Extract<Row, { kind: 'tool' }>>();
-  const tool = (id: string, name: string, input: unknown) => {
+  const tools = new Map<string, ToolItem>();
+  // Where a row goes: with the call that started the subagent it happened inside, or else with the conversation.
+  const listFor = (parent?: string) => (parent && tools.get(parent)?.children) || rows;
+  const tool = (id: string, name: string, input: unknown, parent?: string) => {
     let row = tools.get(id);
     if (!row) {
-      row = { kind: 'tool', id, name, input };
+      row = { kind: 'tool', id, name, input, children: [] };
       tools.set(id, row);
-      rows.push(row);
+      listFor(parent).push(row);
     }
     return row;
   };
   for (const e of events) {
     if (e.type === 'user') rows.push({ kind: 'user', text: e.text, images: e.images });
-    else if (e.type === 'text') rows.push({ kind: 'text', text: e.text });
-    else if (e.type === 'tool_call') tool(e.id, e.name, e.input);
+    else if (e.type === 'text') listFor(e.parent).push({ kind: 'text', text: e.text });
+    else if (e.type === 'tool_call') tool(e.id, e.name, e.input, e.parent);
     else if (e.type === 'approval_request') tool(e.id, e.name, e.input).decision = 'waiting';
     else if (e.type === 'approval_resolved') {
       const row = tools.get(e.id);
@@ -192,6 +200,64 @@ function ToolRow({ row, agentId, online, deciding, onDecide }: { row: Extract<Ro
   );
 }
 
+/**
+ * A subagent: one line saying who, what it was asked and how it is going, and what it is doing now.
+ * Tapping opens what it was asked, every step it took, and what it reported. A question it is
+ * waiting to have answered opens it by itself, because that is what the app is for.
+ */
+function AgentCard({ row, agentId, online, deciding, decide }: { row: ToolItem; agentId: string; online: boolean; deciding: Record<string, boolean>; decide: (id: string) => (allow: boolean, answers?: Record<string, string>) => void }) {
+  const input = (row.input && typeof row.input === 'object' ? row.input : {}) as { subagent_type?: unknown; description?: unknown; prompt?: unknown };
+  const calls = callsIn(row);
+  const waiting = calls.some((c) => c.decision === 'waiting');
+  const [open, setOpen] = useState<boolean>();
+  const expanded = open ?? waiting;
+  const failed = !!row.result?.isError || row.decision === false;
+  const running = !row.result && row.decision !== false;
+  const latest = calls.findLast((c) => !c.result);
+  const reported = row.result?.output.split('\n').find((l) => l.trim()) ?? '';
+  const doing = running ? (latest ? `${latest.name} ${brief(latest.input)}`.trim() : 'Starting…') : reported;
+  const who = typeof input.subagent_type === 'string' && input.subagent_type ? input.subagent_type : 'subagent';
+  const task = typeof input.description === 'string' ? input.description : '';
+  const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+  return (
+    <View style={[local.tool, waiting && { borderLeftWidth: 2, borderLeftColor: color.amber }]}>
+      <Pressable onPress={() => setOpen(!expanded)} accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={`Subagent ${who}, ${waiting ? 'waiting for you' : running ? 'working' : failed ? 'failed' : 'finished'}. ${task}`}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {running ? <Spinner /> : <Txt tone={failed ? 'raspberry' : 'phosphor'} weight="bold">{failed ? '✕' : '✓'}</Txt>}
+          <Txt numberOfLines={expanded ? undefined : 1} style={{ flex: 1 }}>
+            <Txt weight="bold">◇ {who}</Txt>
+            {!!task && <Txt tone="ghost">{'  ' + task}</Txt>}
+          </Txt>
+        </View>
+        <Txt tone={waiting ? 'amber' : 'ghost'} small numberOfLines={expanded ? undefined : 1} style={local.under}>
+          {waiting ? 'waiting for you · ' : ''}
+          {calls.length} tool {calls.length === 1 ? 'call' : 'calls'}
+          {doing && (running || !expanded) ? ` · ${doing}` : ''}
+        </Txt>
+      </Pressable>
+      {expanded && (
+        <View style={{ marginLeft: 8, marginTop: 6, paddingLeft: 10, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: color.rule, gap: 2 }}>
+          {!!prompt && <Txt tone="ghost" small selectable>{prompt.length > 600 ? prompt.slice(0, 600) + '…' : prompt}</Txt>}
+          {row.children.map((child, i) =>
+            child.kind === 'tool' ? (
+              isSubagent(child) ? (
+                <AgentCard key={child.id} row={child} agentId={agentId} online={online} deciding={deciding} decide={decide} />
+              ) : (
+                <ToolRow key={child.id} row={child} agentId={agentId} online={online} deciding={!!deciding[child.id]} onDecide={decide(child.id)} />
+              )
+            ) : child.kind === 'text' ? (
+              <View key={i} style={{ paddingVertical: 4 }}>
+                <Markdown text={child.text} />
+              </View>
+            ) : null,
+          )}
+          {!!row.result && <Txt tone={failed ? 'raspberry' : 'ghost'} small selectable style={{ marginTop: 6 }}>{row.result.output.split('\n').slice(0, 60).join('\n')}</Txt>}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function Chat({ agentId }: { agentId: string }) {
   const { events: all, live: written, queued, activity, status, synced, post, say } = useConnection();
   const events = all[agentId] ?? NO_EVENTS;
@@ -261,7 +327,9 @@ function Chat({ agentId }: { agentId: string }) {
         keyExtractor={(_, i) => String(rows.length - i)}
         contentContainerStyle={[{ paddingVertical: 12 }, ui.talk]}
         renderItem={({ item }) =>
-          item.kind === 'tool' ? (
+          item.kind === 'tool' && isSubagent(item) ? (
+            <AgentCard row={item} agentId={agentId} online={online} deciding={deciding} decide={decide} />
+          ) : item.kind === 'tool' ? (
             <ToolRow row={item} agentId={agentId} online={online} deciding={!!deciding[item.id]} onDecide={decide(item.id)} />
           ) : item.kind === 'user' ? (
             <View style={local.user}>
@@ -282,6 +350,10 @@ function Chat({ agentId }: { agentId: string }) {
         // The header of an inverted list sits at the bottom, under the newest message.
         ListHeaderComponent={
           <>
+            {/* Several subagents at once: how many, so none is lost among the rest. */}
+            {rows.filter((r) => r.kind === 'tool' && isSubagent(r) && !r.result).length > 1 && (
+              <Txt tone="ghost" small style={{ paddingHorizontal: gutter, paddingTop: 8 }}>◇ {rows.filter((r) => r.kind === 'tool' && isSubagent(r) && !r.result).length} subagents running</Txt>
+            )}
             {/* What is waiting for the agent to finish, in the order it will be said. */}
             {(queued[agentId] ?? []).map((item, i) => (
               <View key={`${i}:${item.text}`} style={[local.user, { opacity: 0.55 }]} accessibilityLabel={`Waiting: ${item.text}`}>

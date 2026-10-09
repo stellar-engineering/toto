@@ -153,6 +153,14 @@ test('the browser plugin is given to Claude only where there is a Chromium to dr
   assert.ok(readFileSync(`${plugin}/skills/browser/SKILL.md`, 'utf8').startsWith('---\nname: browser\n'));
 });
 
+test('what a subagent does is tagged with the call that started it, and what the agent does itself is not', () => {
+  const inside = toEvents({ type: 'assistant', parent_tool_use_id: 'toolu_a', message: { content: [{ type: 'tool_use', id: 'x', name: 'Read', input: {} }, { type: 'text', text: 'hm' }] } });
+  assert.deepEqual(inside.map((e) => (e as any).parent), ['toolu_a', 'toolu_a']);
+  const result = toEvents({ type: 'user', parent_tool_use_id: 'toolu_a', message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] } });
+  assert.equal((result[0] as any).parent, 'toolu_a');
+  for (const none of [undefined, null, '']) assert.ok(!('parent' in toEvents({ type: 'assistant', parent_tool_use_id: none, message: { content: [{ type: 'text', text: 'hi' }] } })[0]));
+});
+
 test('only the words an agent is writing itself are passed on as it writes', () => {
   const update = (event: object, extra: object = {}) => ({ type: 'stream_event', event, ...extra });
   assert.equal(deltaOf(update({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hel' } })), 'Hel');

@@ -12,13 +12,15 @@ export type ImageRef = { id: string; mime: string; bytes: number };
 /** A file an agent sent, by reference like a picture, and asked for with `file`. */
 export type FileRef = { id: string; name: string; mime: string; bytes: number };
 
+// `parent`, where an event has one: it happened inside a subagent, and is the id of the tool call
+// that started it (`Agent`, once called `Task`). Without it, the event is the agent's own.
 export type AgentEvent =
   // `images`: pictures the person sent along with what they said.
   | { type: 'user'; text: string; images?: ImageRef[] }
-  | { type: 'text'; text: string }
-  | { type: 'tool_call'; id: string; name: string; input: unknown }
+  | { type: 'text'; text: string; parent?: string }
+  | { type: 'tool_call'; id: string; name: string; input: unknown; parent?: string }
   // `images`: pictures the tool returned, such as a screenshot. `files`: files the agent sent.
-  | { type: 'tool_result'; id: string; output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[] }
+  | { type: 'tool_result'; id: string; output: string; isError: boolean; images?: ImageRef[]; files?: FileRef[]; parent?: string }
   // `id` is the id of the tool call waiting on a decision.
   | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'approval_resolved'; id: string; allowed: boolean }

@@ -34,6 +34,15 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
       { type: 'tool_result', id: 't1', output: 'export async function send(hook: Hook, payload: unknown) {', isError: false },
       { type: 'tool_call', id: 't2', name: 'Edit', input: { file_path: 'src/webhooks/sender.ts' } },
       { type: 'tool_result', id: 't2', output: 'Added a retry loop with jittered backoff.', isError: false },
+      // Two subagents at once: a reviewer that has finished, and a test writer that is still going.
+      { type: 'tool_call', id: 's1', name: 'Agent', input: { subagent_type: 'code-reviewer', description: 'Review the retry loop', prompt: 'Read src/webhooks/sender.ts and say whether the retry loop can retry for ever, or retry something that should not be retried.' } },
+      { type: 'tool_call', id: 's2', name: 'Agent', input: { subagent_type: 'test-writer', description: 'Write tests for the backoff', prompt: 'Add tests to src/webhooks/sender.test.ts for a delivery that succeeds on the second try, one that gives up, and the cap on the delay.' } },
+      { type: 'tool_call', id: 'c1', name: 'Read', input: { file_path: 'src/webhooks/sender.ts' }, parent: 's1' },
+      { type: 'tool_result', id: 'c1', output: 'export async function send(hook: Hook, payload: unknown) {', isError: false, parent: 's1' },
+      { type: 'tool_call', id: 'c2', name: 'Grep', input: { pattern: 'attempt' }, parent: 's1' },
+      { type: 'tool_result', id: 'c2', output: 'src/webhooks/sender.ts: 6 matches', isError: false, parent: 's1' },
+      { type: 'tool_result', id: 's1', output: 'The loop stops after five attempts and only retries on network errors and 5xx responses. One thing to fix: a 429 with a Retry-After header should wait that long, not the computed delay.', isError: false },
+      { type: 'tool_call', id: 'c3', name: 'Edit', input: { file_path: 'src/webhooks/sender.test.ts' }, parent: 's2' },
       { type: 'tool_call', id: 't3', name: 'Bash', input: { command: 'npm test -- webhooks' } },
       { type: 'approval_request', id: 't3', name: 'Bash', input: { command: 'npm test -- webhooks' } },
     ],
@@ -47,6 +56,7 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   // Agents partway through a turn, and what has been left waiting for each.
   // (The first agent starts with a question already open.)
   const working = new Set<string>(['a0000001']);
+  let writerDone = false;
   const waiting: Record<string, { text: string }[]> = {};
   let next = 0;
   const id = () => `d${String(++next).padStart(7, '0')}`;
@@ -142,6 +152,12 @@ export function demo(say: (message: ServerMessage) => void): (message: ClientMes
   /** The turn is over: whatever was waiting is said next. */
   function finish(agentId: string) {
     working.delete(agentId);
+    // The test writer was still going when the demo began; it is done by the time the turn is.
+    if (agentId === 'a0000001' && !writerDone) {
+      writerDone = true;
+      emit(agentId, { type: 'tool_result', id: 'c3', output: 'Added 3 tests.', isError: false, parent: 's2' });
+      emit(agentId, { type: 'tool_result', id: 's2', output: 'Added three tests to sender.test.ts: success on the second try, giving up after five, and the cap on the delay.', isError: false });
+    }
     emit(agentId, { type: 'done', isError: false });
     const next = waiting[agentId]?.shift();
     if (!next) return;

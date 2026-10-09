@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { AgentEvent, ImageRef } from '../../protocol.ts';
-import { command } from './projects.ts';
+import { command, dataDir } from './projects.ts';
 
 // The browser for agents: a plugin shipped with the server (so every project has it, and an update
 // keeps it current), driving the Chromium that install.sh puts on the device.
@@ -45,6 +46,18 @@ const blockText = (content: unknown, kept: boolean): string =>
       : '';
 
 /**
+ * For finding out what Claude really sends about subagents: with TOTO_DEBUG_STREAM set, the messages
+ * that are about them (system messages, anything from inside one, the calls that start them) are kept,
+ * cut short and without picture data, in a private file in the data directory.
+ */
+function debugStream(msg: any, line: string) {
+  if (!process.env.TOTO_DEBUG_STREAM) return;
+  if (!(msg?.type === 'system' || msg?.parent_tool_use_id || /"name":"(Agent|Task)"|agentId/.test(line))) return;
+  const short = line.replace(/"data":"[^"]{100,}"/g, '"data":"…"').slice(0, 3000);
+  appendFileSync(join(dataDir, 'debug-stream.jsonl'), short + '\n', { mode: 0o600 });
+}
+
+/**
  * The text Claude has just written, from a partial-message update, or nothing for any other message.
  * Only the agent's own words: what a sub-agent writes (it has a parent tool call) is not shown as it goes.
  */
@@ -62,12 +75,14 @@ export function toEvents(msg: any, keep?: Keep): AgentEvent[] {
   if (msg?.type !== 'assistant' && msg?.type !== 'user') return [];
   const content = msg.message?.content;
   if (!Array.isArray(content)) return [];
+  // Messages from inside a subagent say which call started it.
+  const parent: { parent?: string } = typeof msg.parent_tool_use_id === 'string' && msg.parent_tool_use_id ? { parent: msg.parent_tool_use_id } : {};
   return content.flatMap((b: any): AgentEvent[] => {
-    if (b.type === 'text') return [{ type: 'text', text: b.text }];
-    if (b.type === 'tool_use') return [{ type: 'tool_call', id: b.id, name: b.name, input: b.input }];
+    if (b.type === 'text') return [{ type: 'text', text: b.text, ...parent }];
+    if (b.type === 'tool_use') return [{ type: 'tool_call', id: b.id, name: b.name, input: b.input, ...parent }];
     if (b.type === 'tool_result') {
       const images = keep && Array.isArray(b.content) ? b.content.filter(isPicture).flatMap((p: any) => keep(p.source.media_type, p.source.data) ?? []) : [];
-      return [{ type: 'tool_result', id: b.tool_use_id, output: blockText(b.content, !!keep), isError: !!b.is_error, ...(images.length ? { images } : null) }];
+      return [{ type: 'tool_result', id: b.tool_use_id, output: blockText(b.content, !!keep), isError: !!b.is_error, ...(images.length ? { images } : null), ...parent }];
     }
     return [];
   });
@@ -141,6 +156,7 @@ export function startClaude({ cwd, user, sessionId, onEvent, keepImage, onDelta,
       for (const [id, p] of pending) if (p.requestId === msg.request_id) settle(id, false);
       return;
     }
+    debugStream(msg, line);
     const delta = deltaOf(msg);
     if (delta) return onDelta?.(delta);
     toEvents(msg, keepImage).forEach(onEvent);
