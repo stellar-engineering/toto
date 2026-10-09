@@ -71,7 +71,8 @@ export const Face = memo(function Face({ mood, size = 15, nose = false, trail = 
     // A fixed five characters wide, so z's and counting dots trail off to the right without
     // nudging the face, and a column of faces lines up.
     <View style={[{ width: size * 0.6 * 5, overflow: 'visible' }, style]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Text style={[type, { width: size * 0.6 * 9 }]} numberOfLines={1} allowFontScaling={false}>
+      {/* Wider than the box around it, on purpose, so the dots can trail off beyond it. Text is only as wide as its parent unless told its widest (maxWidth), and a line that does not fit ends in an ellipsis, which is what the counting dots were turning into. */}
+      <Text style={[type, { width: size * 0.6 * 9, maxWidth: size * 0.6 * 9 }]} numberOfLines={1} ellipsizeMode="clip" allowFontScaling={false}>
         {shownFrame.face}
         {shownFrame.extra}
       </Text>
